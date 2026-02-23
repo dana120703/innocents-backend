@@ -1,0 +1,58 @@
+from pydantic import BaseModel, EmailStr
+from typing import List
+from datetime import datetime
+
+"""
+
+Pydantic-modeller som definerer hva som er gyldig input og output for API-endepunktene 
+— f.eks. hva POST /checkout/create forventer å motta fra Next.js-frontenden, og hva den returnerer tilbake.
+
+
+"""
+
+
+# --- Checkout ---
+
+class CartItem(BaseModel):
+    ticket_type_id: str
+    quantity: int
+
+
+class BuyerInfo(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str   # format: "+4712345678"
+
+
+class CreateCheckoutRequest(BaseModel):
+    items: List[CartItem]
+    buyer: BuyerInfo
+
+
+class CreateCheckoutResponse(BaseModel):
+    order_id: str
+    checkout_url: str
+
+
+# --- Orders ---
+
+class OrderResponse(BaseModel):
+    order_id: str
+    status: str
+    amount_nok: int
+    created_at: datetime
+
+
+# --- Tickets ---
+
+class TicketVerifyResponse(BaseModel):
+    valid: bool
+    ticket_id: str | None = None
+    ticket_type: str | None = None
+    buyer_name: str | None = None
+    status: str | None = None
+    message: str
+
+
+class CheckinRequest(BaseModel):
+    token: str
