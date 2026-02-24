@@ -27,9 +27,9 @@ class CartItem(BaseModel):
 
 
 class BuyerInfo(BaseModel):
-    name: str
     email: EmailStr
-    phone: str   # format: "+4712345678"
+    name: str = "Vipps-kunde"
+    phone: str = "+4700000000"
 
 
 class CreateCheckoutRequest(BaseModel):

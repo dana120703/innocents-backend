@@ -51,10 +51,10 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
           <div
             key={ticket.id}
             className={cn(
-              "flex items-center justify-between rounded-lg border-2 px-4 py-4 transition-all duration-150 md:px-5",
+              "flex items-center justify-between rounded-xl border-2 px-4 py-4 transition-all duration-150 md:px-5",
               isActive
-                ? "border-foreground bg-card"
-                : "border-border bg-card hover:border-foreground/20"
+                ? "border-primary bg-primary/5"
+                : "border-border bg-card hover:border-primary/30"
             )}
           >
             <div className="flex flex-col">
@@ -79,7 +79,7 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
                     "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
                     count === 0
                       ? "cursor-not-allowed text-muted-foreground/30"
-                      : "bg-secondary text-foreground hover:bg-foreground hover:text-primary-foreground"
+                      : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground"
                   )}
                   aria-label={`Reduser antall ${ticket.label}-billetter`}
                 >
@@ -100,7 +100,7 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
                     "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
                     count === 20
                       ? "cursor-not-allowed text-muted-foreground/30"
-                      : "bg-secondary text-foreground hover:bg-foreground hover:text-primary-foreground"
+                      : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground"
                   )}
                   aria-label={`Legg til ${ticket.label}-billett`}
                 >

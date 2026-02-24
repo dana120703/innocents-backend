@@ -76,11 +76,11 @@ async def checkout_create(req: CreateCheckoutRequest, db: Session = Depends(get_
             "qty": cart_item.quantity,
         })
 
-    # 2) Lag ordre i DB (status=CREATED)
+    # 2) Lag ordre i DB (status=CREATED) – name/phone har standard hvis ikke sendt
     order = Order(
-        buyer_name=req.buyer.name,
+        buyer_name=req.buyer.name or "Vipps-kunde",
         buyer_email=req.buyer.email,
-        buyer_phone=req.buyer.phone,
+        buyer_phone=req.buyer.phone or "+4700000000",
         amount_nok=total_nok,
         status=OrderStatus.CREATED,
     )

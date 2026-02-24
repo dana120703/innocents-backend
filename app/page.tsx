@@ -1,42 +1,24 @@
 "use client"
 
-import { useState, useCallback, useEffect, type FormEvent } from "react"
+import { useState, useEffect, type FormEvent } from "react"
 import { toast } from "sonner"
 import {
   TicketSelector,
   type TicketSelection,
 } from "@/components/ticket-selector"
-import { CheckoutForm, type FormData } from "@/components/checkout-form"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import { Lock, Ticket } from "lucide-react"
-
-const initialFormData: FormData = {
-  fornavn: "",
-  etternavn: "",
-  epost: "",
-  telefon: "",
-  adresse: "",
-  postnummer: "",
-  sted: "",
-}
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 function getApiBase(): string {
   if (typeof window === "undefined") return ""
   const env = process.env.NEXT_PUBLIC_API_URL
   if (env) return env.replace(/\/$/, "")
   if (window.location.origin.includes("localhost")) return "http://localhost:8000"
-  // Same origin: bruk tom streng så fetch("/ticket-types") treffer Next.js sin rewrite til backend
   return ""
 }
 const API_BASE = getApiBase()
-
-function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "")
-  if (digits.length === 8) return `+47${digits}`
-  if (digits.startsWith("47") && digits.length === 10) return `+${digits}`
-  return raw.trim().startsWith("+") ? raw.trim() : `+${digits}`
-}
 
 export default function TicketPage() {
   const [ticketTypeIds, setTicketTypeIds] = useState<Record<string, string>>({})
@@ -45,10 +27,8 @@ export default function TicketPage() {
     barn: 0,
     pensjonist: 0,
   })
-  const [formData, setFormData] = useState<FormData>(initialFormData)
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof FormData, string>>
-  >({})
+  const [email, setEmail] = useState("")
+  const [emailError, setEmailError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
@@ -71,50 +51,26 @@ export default function TicketPage() {
       )
   }, [])
 
-  const totalTickets =
-    selection.voksen + selection.barn + selection.pensjonist
+  const totalTickets = selection.voksen + selection.barn + selection.pensjonist
   const totalPrice =
     selection.voksen * 350 +
     selection.barn * 150 +
     selection.pensjonist * 250
 
-  const validate = useCallback((): boolean => {
-    const e: Partial<Record<keyof FormData, string>> = {}
-    if (!formData.fornavn.trim()) e.fornavn = "Fornavn er obligatorisk"
-    if (!formData.etternavn.trim()) e.etternavn = "Etternavn er obligatorisk"
-    if (!formData.epost.trim()) {
-      e.epost = "E-post er obligatorisk"
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.epost)) {
-      e.epost = "Ugyldig e-postadresse"
-    }
-    if (!formData.telefon.trim()) {
-      e.telefon = "Telefon er obligatorisk"
-    } else {
-      const digits = formData.telefon.replace(/\D/g, "")
-      const withCountry = digits.length === 8 ? `47${digits}` : digits
-      if (!/^47\d{8}$/.test(withCountry)) {
-        e.telefon = "Ugyldig telefon (bruk 8 siffer eller +47)"
-      }
-    }
-    if (!formData.adresse.trim()) e.adresse = "Adresse er obligatorisk"
-    if (!formData.postnummer.trim()) {
-      e.postnummer = "Postnummer er obligatorisk"
-    } else if (!/^\d{4}$/.test(formData.postnummer)) {
-      e.postnummer = "Ugyldig postnummer"
-    }
-    if (!formData.sted.trim()) e.sted = "Sted er obligatorisk"
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }, [formData])
-
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault()
+    setEmailError("")
     if (totalTickets === 0) {
-      toast.error("Velg minst en billett for a fortsette")
+      toast.error("Velg minst én billett")
       return
     }
-    if (!validate()) {
-      toast.error("Vennligst fyll ut alle obligatoriske felt")
+    const trimmed = email.trim()
+    if (!trimmed) {
+      setEmailError("E-post er obligatorisk – billettene sendes hit")
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError("Ugyldig e-postadresse")
       return
     }
     const voksenId = ticketTypeIds["Voksen"]
@@ -135,11 +91,7 @@ export default function TicketPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items,
-          buyer: {
-            name: `${formData.fornavn.trim()} ${formData.etternavn.trim()}`,
-            email: formData.epost.trim(),
-            phone: normalizePhone(formData.telefon),
-          },
+          buyer: { email: trimmed },
         }),
       })
       if (!res.ok) {
@@ -156,8 +108,7 @@ export default function TicketPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Compact brand bar */}
-      <div className="border-b border-border bg-card">
+      <div className="border-b border-border bg-card/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <span className="text-sm font-semibold tracking-tight text-foreground">
             Innocents Norge
@@ -170,30 +121,24 @@ export default function TicketPage() {
       </div>
 
       <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8 md:py-12">
-        {/* Headline */}
         <div className="flex flex-col gap-2 text-center">
           <h1 className="font-serif text-3xl text-foreground md:text-4xl text-balance">
-            Kjop billetter
+            Kjøp billetter
           </h1>
           <p className="text-sm text-muted-foreground">
-            Velg antall, fyll ut skjemaet og fulfor bestillingen.
+            Velg antall og bestill – du betaler i Vipps.
           </p>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-8"
-        >
-          {/* Step 1 - Tickets */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-8">
           <section className="flex flex-col gap-4">
-            <StepLabel step={1} label="Velg billetter" />
+            <h2 className="text-base font-semibold text-foreground">Velg billetter</h2>
             <TicketSelector selection={selection} onChange={setSelection} />
 
             {totalTickets > 0 && (
-              <div className="flex items-center justify-between rounded-lg bg-foreground px-4 py-3 text-primary-foreground">
+              <div className="flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-primary-foreground shadow-sm">
                 <span className="text-sm">
-                  {totalTickets}{" "}
-                  {totalTickets === 1 ? "billett" : "billetter"}
+                  {totalTickets} {totalTickets === 1 ? "billett" : "billetter"}
                 </span>
                 <span className="text-base font-bold tabular-nums">
                   {totalPrice.toLocaleString("nb-NO")} kr
@@ -202,74 +147,55 @@ export default function TicketPage() {
             )}
           </section>
 
-          <Separator />
-
-          {/* Step 2 - Details */}
-          <section className="flex flex-col gap-4">
-            <StepLabel step={2} label="Dine opplysninger" />
-            <p className="text-xs text-muted-foreground -mt-1">
-              Billettene sendes til e-postadressen du oppgir.
-            </p>
-            <CheckoutForm
-              formData={formData}
-              onChange={setFormData}
-              errors={errors}
+          <section className="flex flex-col gap-2">
+            <Label htmlFor="email" className="text-foreground">
+              E-post (billettene sendes hit)
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="din@epost.no"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setEmailError("")
+              }}
+              className={emailError ? "border-destructive" : ""}
+              autoComplete="email"
             />
+            {emailError && (
+              <p className="text-sm text-destructive">{emailError}</p>
+            )}
           </section>
 
-          <Separator />
-
-          {/* Step 3 - Submit */}
-          <section className="flex flex-col gap-3">
-            <StepLabel step={3} label="Fulfor bestillingen" />
-
-            <Button
-              type="submit"
-              disabled={totalTickets === 0 || isSubmitting}
-              className="h-12 w-full bg-foreground text-base font-semibold text-primary-foreground hover:bg-foreground/90 disabled:opacity-40"
-              size="lg"
-            >
-              {isSubmitting ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                  Behandler...
-                </span>
-              ) : totalTickets > 0 ? (
-                <span className="flex items-center gap-2">
-                  <Ticket className="h-4 w-4" />
-                  Betal {totalPrice.toLocaleString("nb-NO")} kr
-                </span>
-              ) : (
-                "Velg billetter for a fortsette"
-              )}
-            </Button>
-
-            <p className="text-center text-[11px] text-muted-foreground">
-              Gratis avbestilling inntil 48 timer for arrangementet.
-            </p>
-          </section>
+          <Button
+            type="submit"
+            disabled={totalTickets === 0 || isSubmitting}
+            className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40"
+            size="lg"
+          >
+            {isSubmitting ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                Sender deg til Vipps...
+              </span>
+            ) : totalTickets > 0 ? (
+              <span className="flex items-center justify-center gap-2">
+                <Ticket className="h-4 w-4" />
+                Bestill nå
+              </span>
+            ) : (
+              "Velg billetter for å fortsette"
+            )}
+          </Button>
         </form>
       </main>
 
-      {/* Minimal footer */}
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-6">
-          <p className="text-xs text-muted-foreground">
-            &copy; 2026 Innocents Norge
-          </p>
+          <p className="text-xs text-muted-foreground">&copy; 2026 Innocents Norge</p>
         </div>
       </footer>
-    </div>
-  )
-}
-
-function StepLabel({ step, label }: { step: number; label: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-bold text-primary-foreground">
-        {step}
-      </span>
-      <h2 className="text-base font-semibold text-foreground">{label}</h2>
     </div>
   )
 }

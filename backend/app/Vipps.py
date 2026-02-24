@@ -108,9 +108,19 @@ async def create_checkout_session(
         )
 
     data = resp.json()
+    frontend_url = data.get("checkoutFrontendUrl") or ""
+    token = data.get("token")
+    # For redirect-flyt uten SDK: token må med i URL så Vipps åpner riktig sesjon (unngår "Session expired")
+    if token and frontend_url:
+        from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+        parsed = urlparse(frontend_url)
+        qs = parse_qs(parsed.query)
+        qs["token"] = [token]
+        new_query = urlencode(qs, doseq=True)
+        frontend_url = urlunparse(parsed._replace(query=new_query))
     return {
-        "token": data.get("token"),
-        "checkout_url": data.get("checkoutFrontendUrl"),
+        "token": token,
+        "checkout_url": frontend_url,
     }
 
 
