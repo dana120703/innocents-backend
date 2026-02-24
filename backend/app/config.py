@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
-from typing import List
+from typing import List, Optional
 import json
 
 
@@ -38,13 +38,13 @@ class Settings(BaseSettings):
     # Webhook
     VIPPS_WEBHOOK_SECRET: str
 
-    # Email
-    RESEND_API_KEY: str
+    # Email (valgfri – e-post sendes ikke før du setter RESEND_API_KEY i Railway)
+    RESEND_API_KEY: Optional[str] = None
     EMAIL_FROM: str = "billetter@innocents.no"
 
-    # App
+    # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str
-    FRONTEND_RETURN_URL: str
+    FRONTEND_RETURN_URL: str = "https://innocents.no"
     CORS_ORIGINS: List[str] = ["https://innocents.no"]
 
     @field_validator("CORS_ORIGINS", mode="before")

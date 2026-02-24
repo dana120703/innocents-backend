@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.models import Order, Ticket, TicketType, OrderItem, TicketStatus
 from app.config import settings
 
-resend.api_key = settings.RESEND_API_KEY
+if settings.RESEND_API_KEY:
+    resend.api_key = settings.RESEND_API_KEY
 
 
 """
@@ -67,6 +68,10 @@ def issue_tickets(order: Order, db: Session) -> list[Ticket]:
 
 def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     """Sender billett-epost med QR-koder til kjøper."""
+    if not settings.RESEND_API_KEY:
+        import logging
+        logging.getLogger(__name__).warning("RESEND_API_KEY ikke satt – hopper over e-postutsendelse")
+        return
     ticket_blocks = ""
     for i, ticket in enumerate(tickets, 1):
         tt = db.query(TicketType).filter(TicketType.id == ticket.ticket_type_id).first()
