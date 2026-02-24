@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # Email (valgfri – e-post sendes ikke før du setter RESEND_API_KEY i Railway)
     RESEND_API_KEY: Optional[str] = None
-    EMAIL_FROM: str = "billetter@innocents.no"
+    EMAIL_FROM: str = "onboarding@resend.dev"
 
     # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str
