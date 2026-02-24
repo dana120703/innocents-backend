@@ -1,9 +1,4 @@
-# Railway: bygg og kjør backend (FastAPI) fra denne mappen
+# Railway: tving Docker-bygg (ikke Railpack)
 [build]
-builder = "dockerfile"
+builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-
-[deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 10
