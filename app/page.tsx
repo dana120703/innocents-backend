@@ -21,10 +21,14 @@ const initialFormData: FormData = {
   sted: "",
 }
 
-const API_BASE =
-  typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
-    : ""
+function getApiBase(): string {
+  if (typeof window === "undefined") return ""
+  const env = process.env.NEXT_PUBLIC_API_URL
+  if (env) return env.replace(/\/$/, "")
+  if (window.location.origin.includes("localhost")) return "http://localhost:8000"
+  return window.location.origin
+}
+const API_BASE = getApiBase()
 
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "")
@@ -47,9 +51,11 @@ export default function TicketPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    fetch(`${API_BASE}/ticket-types`)
+    if (!API_BASE) return
+    const url = `${API_BASE}/ticket-types`
+    fetch(url)
       .then((res) =>
-        res.ok ? res.json() : Promise.reject(new Error("Kunne ikke hente billettyper"))
+        res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))
       )
       .then((types: { id: string; name: string }[]) => {
         const map: Record<string, string> = {}
@@ -61,7 +67,7 @@ export default function TicketPage() {
         setTicketTypeIds(map)
       })
       .catch(() =>
-        toast.error("Kunne ikke koble til billettserver. Sjekk at backend kjører.")
+        toast.error(`Kunne ikke koble til billettserver. Sjekk at backend kjører på ${url}`)
       )
   }, [])
 
