@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
+from typing import List
 
 from app.db import get_db
 from app.models import Order, OrderItem, Ticket, TicketType, OrderStatus, TicketStatus
@@ -9,18 +10,37 @@ from app.schemas import (
     CreateCheckoutResponse,
     OrderResponse,
     TicketVerifyResponse,
+    TicketTypeResponse,
     CheckinRequest,
 )
-from app.vipps import create_checkout_session
+from app.Vipps import create_checkout_session
 
 router = APIRouter()
 
 """
-Selve API-endepunktene: POST /checkout/create (lager ordre + Vipps-sesjon), 
+Selve API-endepunktene: GET /ticket-types (liste billettyper),
+POST /checkout/create (lager ordre + Vipps-sesjon),
 GET /orders/{id} (frontend kan poll'e betalingsstatus),
-GET /tickets/verify og 
-POST /tickets/checkin (for scanning i døra på kvelden).
+GET /tickets/verify og POST /tickets/checkin (for scanning i døra).
 """
+
+
+# ─── Billettyper (frontend henter her) ────────────────────────────────────────
+
+@router.get("/ticket-types", response_model=List[TicketTypeResponse])
+def list_ticket_types(db: Session = Depends(get_db)):
+    """Returnerer alle aktive billettyper med id, navn, pris og kapasitet."""
+    types = db.query(TicketType).filter(TicketType.is_active == True).all()
+    return [
+        TicketTypeResponse(
+            id=tt.id,
+            name=tt.name,
+            price_nok=tt.price_nok,
+            capacity=tt.capacity,
+            sold_count=tt.sold_count or 0,
+        )
+        for tt in types
+    ]
 
 
 # ─── Checkout ────────────────────────────────────────────────────────────────

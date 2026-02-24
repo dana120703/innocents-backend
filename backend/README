@@ -1,0 +1,128 @@
+# Innocents Tickets API – En kveld for Gaza
+
+FastAPI backend med Vipps Checkout (produksjon), Postgres, QR-billetter og Resend e-post.
+
+## Lokal kjøring (Mac)
+
+Du må bruke **Python 3.12** (ikke 3.14) og aktivere venv før `seed` og `uvicorn`.
+
+```bash
+# Du står allerede i backend-mappen – IKKE kjør "cd backend" igjen
+
+# 1. Opprett venv med Python 3.12 (kun første gang)
+python3.12 -m venv .venv
+
+# 2. Aktiver venv og installer avhengigheter
+source .venv/bin/activate
+pip install -r Requirements.txt
+
+# 3. Seed billettyper (krever at .env DATABASE_URL peker på Supabase)
+python3 seed.py
+
+# 4. Start backend
+uvicorn app.main:app --reload --port 8000
+```
+
+Etter at backend kjører: åpne frontend (f.eks. `pnpm dev` i prosjektets rot) og gå til billettsiden. Klikk «Betal» – du sendes til Vipps Checkout.
+
+**Hvis passordet i DATABASE_URL inneholder @, [ eller ]:** encod det i URL (f.eks. `@` → `%40`, `[` → `%5B`, `]` → `%5D`).
+
+### «failed to resolve host» mot Supabase
+
+Direkte-URL (`db.xxx.supabase.co`) bruker **IPv6**. På mange nettverk (Wi‑Fi, enkelte VPN) løses ikke vertsnavnet, og du får `failed to resolve host 'db.jcqnftyzmclzloyapxzd.supabase.co'`.
+
+**Løsning: bruk Session mode (pooler) i stedet**
+
+1. Gå til [Supabase Dashboard](https://supabase.com/dashboard) → ditt prosjekt.
+2. Klikk **Connect** (eller **Project settings** → **Database**).
+3. Under **Connection string** velg **Session mode** (ikke «Direct connection»).
+4. Kopier URI-en. Den ser omtrent slik ut:
+   ```text
+   postgres://postgres.PROJECT_REF:[PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+   ```
+5. I `backend/.env` sett:
+   ```text
+   DATABASE_URL=postgresql://postgres.PROJECT_REF:[PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:5432/postgres
+   ```
+   (Bytt `postgres://` til `postgresql://` hvis du kopierte med `postgres://`. Erstatt `[PASSWORD]` med passordet; hvis det har spesialtegn, URL-encod dem som over.)
+6. Kjør `python3 seed.py` på nytt.
+
+Session mode bruker Supabase sin pooler som støtter IPv4, og fungerer der direkte-tilkobling feiler på grunn av DNS/IPv6.
+
+---
+
+## Endepunkter
+
+| Metode | URL | Beskrivelse |
+|--------|-----|-------------|
+| GET | `/health` | Helsesjekk |
+| POST | `/checkout/create` | Start betaling → returnerer Vipps checkout URL |
+| GET | `/orders/{order_id}` | Sjekk ordre-status (for frontend-polling) |
+| POST | `/webhooks/vipps` | Vipps callback (betaling bekreftet) |
+| GET | `/tickets/verify?token=...` | Valider billett i døra |
+| POST | `/tickets/checkin` | Sjekk inn billett (marker som brukt) |
+
+## Oppsett
+
+### 1. Klon og installer
+
+```bash
+git clone ...
+cd innocents-backend
+cp .env.example .env
+# Fyll inn verdier i .env
+pip install -r requirements.txt
+```
+
+### 2. Sett opp database
+
+```bash
+# Lokalt (SQLite for testing):
+# Endre DATABASE_URL i .env til: sqlite:///./tickets.db
+
+# Kjør applikasjonen – tabeller opprettes automatisk
+uvicorn app.main:app --reload
+```
+
+### 3. Seed billettyper
+
+```bash
+python seed.py
+# Kopier ID-ene som printes – disse brukes i frontend
+```
+
+### 4. Deploy til Render
+
+1. Push til GitHub
+2. Opprett "Web Service" på render.com
+3. Legg inn miljøvariabler fra `.env.example`
+4. Build command: `pip install -r requirements.txt`
+5. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+## Frontend-integrasjon (Next.js)
+
+```typescript
+// Eksempel: checkout-kall fra Next.js
+const res = await fetch("https://api.innocents.no/checkout/create", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    items: [{ ticket_type_id: "uuid-fra-seed", quantity: 2 }],
+    buyer: { name: "Ola Nordmann", email: "ola@example.com", phone: "+4712345678" },
+  }),
+});
+const { order_id, checkout_url } = await res.json();
+window.location.href = checkout_url; // send til Vipps
+```
+
+## Webhook-autentisering
+
+Vipps sender `Authorization`-headeren med verdien av `VIPPS_WEBHOOK_SECRET`.
+Sett samme verdi i Vipps Merchant Portal under callback-innstillinger.
+
+## Viktige ting å vite
+
+- **Idempotency**: Duplikate webhooks håndteres automatisk via `ProcessedWebhook`-tabellen
+- **Betaling = webhook**, ikke redirect. Stol aldri på return URL alene.
+- **QR-token** er en UUID – genereres ved ticket-utstedelse, ikke ved ordre
+- **sold_count** oppdateres IKKE ved reservasjon, men ved `issue_tickets()` (PAID). For høy-kapasitet events bør du legge til soft-reservation.

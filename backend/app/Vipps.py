@@ -15,13 +15,17 @@ Også get_session_status() om du trenger å sjekke status manuelt.
 """
 
 def _get_headers() -> dict:
-    """Standard Vipps API headers for Checkout."""
+    """Standard Vipps API headers for Checkout (inkl. påkrevde system-headere)."""
     return {
         "Content-Type": "application/json",
         "client_id": settings.VIPPS_CLIENT_ID,
         "client_secret": settings.VIPPS_CLIENT_SECRET,
         "Ocp-Apim-Subscription-Key": settings.VIPPS_SUBSCRIPTION_KEY,
         "Merchant-Serial-Number": settings.VIPPS_MSN,
+        "Vipps-System-Name": getattr(settings, "VIPPS_SYSTEM_NAME", "Innocents"),
+        "Vipps-System-Version": getattr(settings, "VIPPS_SYSTEM_VERSION", "1.0"),
+        "Vipps-System-Plugin-Name": getattr(settings, "VIPPS_SYSTEM_PLUGIN_NAME", "innocents-backend"),
+        "Vipps-System-Plugin-Version": getattr(settings, "VIPPS_SYSTEM_PLUGIN_VERSION", "1.0"),
     }
 
 
@@ -34,6 +38,14 @@ async def create_checkout_session(
     Oppretter en Vipps Checkout-sesjon.
     Returnerer: { token, checkoutFrontendUrl }
     """
+    callback_url = f"{settings.BASE_URL.rstrip('/')}/webhooks/vipps"
+    if not callback_url.startswith("https://"):
+        raise RuntimeError(
+            "Vipps krever HTTPS for callback URL. "
+            "Sett BASE_URL til din Railway-URL (f.eks. https://innocents-backend-production.up.railway.app) i .env, "
+            "eller bruk ngrok for lokal testing."
+        )
+
     url = f"{settings.VIPPS_BASE_URL}/checkout/v3/session"
 
     # Bygg linjer til Vipps (vises i checkout-UI)
@@ -57,7 +69,7 @@ async def create_checkout_session(
     body = {
         "merchantInfo": {
             "merchantSerialNumber": settings.VIPPS_MSN,
-            "callbackUrl": f"{settings.BASE_URL}/webhooks/vipps",
+            "callbackUrl": callback_url,
             "returnUrl": settings.FRONTEND_RETURN_URL,
             "callbackAuthorizationToken": settings.VIPPS_WEBHOOK_SECRET,
         },

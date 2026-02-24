@@ -8,6 +8,7 @@ export interface FormData {
   fornavn: string
   etternavn: string
   epost: string
+  telefon: string
   adresse: string
   postnummer: string
   sted: string
@@ -99,6 +100,21 @@ export function CheckoutForm({ formData, onChange, errors }: CheckoutFormProps) 
           aria-invalid={!!errors.epost}
           className={inputClass}
           autoComplete="email"
+          required
+        />
+      </Field>
+
+      <Field id="telefon" label="Telefon" error={errors.telefon}>
+        <Input
+          id="telefon"
+          name="telefon"
+          type="tel"
+          placeholder="+47 123 45 678"
+          value={formData.telefon}
+          onChange={handleChange}
+          aria-invalid={!!errors.telefon}
+          className={inputClass}
+          autoComplete="tel"
           required
         />
       </Field>

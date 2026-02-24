@@ -19,15 +19,21 @@ db = SessionLocal()
 
 ticket_types = [
     TicketType(
-        name="Standard",
-        price_nok=200,
+        name="Voksen",
+        price_nok=350,
         capacity=300,
         is_active=True,
     ),
     TicketType(
-        name="VIP",
-        price_nok=500,
-        capacity=50,
+        name="Barn",
+        price_nok=150,
+        capacity=100,
+        is_active=True,
+    ),
+    TicketType(
+        name="Pensjonist",
+        price_nok=250,
+        capacity=100,
         is_active=True,
     ),
 ]

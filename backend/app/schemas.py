@@ -13,6 +13,14 @@ Pydantic-modeller som definerer hva som er gyldig input og output for API-endepu
 
 # --- Checkout ---
 
+class TicketTypeResponse(BaseModel):
+    id: str
+    name: str
+    price_nok: int
+    capacity: int
+    sold_count: int = 0
+
+
 class CartItem(BaseModel):
     ticket_type_id: str
     quantity: int

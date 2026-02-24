@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useCallback, type FormEvent } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useCallback, useEffect, type FormEvent } from "react"
 import { toast } from "sonner"
 import {
   TicketSelector,
@@ -16,13 +15,26 @@ const initialFormData: FormData = {
   fornavn: "",
   etternavn: "",
   epost: "",
+  telefon: "",
   adresse: "",
   postnummer: "",
   sted: "",
 }
 
+const API_BASE =
+  typeof window !== "undefined"
+    ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
+    : ""
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "")
+  if (digits.length === 8) return `+47${digits}`
+  if (digits.startsWith("47") && digits.length === 10) return `+${digits}`
+  return raw.trim().startsWith("+") ? raw.trim() : `+${digits}`
+}
+
 export default function TicketPage() {
-  const router = useRouter()
+  const [ticketTypeIds, setTicketTypeIds] = useState<Record<string, string>>({})
   const [selection, setSelection] = useState<TicketSelection>({
     voksen: 0,
     barn: 0,
@@ -33,6 +45,25 @@ export default function TicketPage() {
     Partial<Record<keyof FormData, string>>
   >({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/ticket-types`)
+      .then((res) =>
+        res.ok ? res.json() : Promise.reject(new Error("Kunne ikke hente billettyper"))
+      )
+      .then((types: { id: string; name: string }[]) => {
+        const map: Record<string, string> = {}
+        for (const t of types) {
+          if (t.name === "Voksen" || t.name === "Barn" || t.name === "Pensjonist") {
+            map[t.name] = t.id
+          }
+        }
+        setTicketTypeIds(map)
+      })
+      .catch(() =>
+        toast.error("Kunne ikke koble til billettserver. Sjekk at backend kjører.")
+      )
+  }, [])
 
   const totalTickets =
     selection.voksen + selection.barn + selection.pensjonist
@@ -49,6 +80,15 @@ export default function TicketPage() {
       e.epost = "E-post er obligatorisk"
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.epost)) {
       e.epost = "Ugyldig e-postadresse"
+    }
+    if (!formData.telefon.trim()) {
+      e.telefon = "Telefon er obligatorisk"
+    } else {
+      const digits = formData.telefon.replace(/\D/g, "")
+      const withCountry = digits.length === 8 ? `47${digits}` : digits
+      if (!/^47\d{8}$/.test(withCountry)) {
+        e.telefon = "Ugyldig telefon (bruk 8 siffer eller +47)"
+      }
     }
     if (!formData.adresse.trim()) e.adresse = "Adresse er obligatorisk"
     if (!formData.postnummer.trim()) {
@@ -71,12 +111,41 @@ export default function TicketPage() {
       toast.error("Vennligst fyll ut alle obligatoriske felt")
       return
     }
+    const voksenId = ticketTypeIds["Voksen"]
+    const barnId = ticketTypeIds["Barn"]
+    const pensjonistId = ticketTypeIds["Pensjonist"]
+    if (!voksenId || !barnId || !pensjonistId) {
+      toast.error("Billettyper ikke lastet ennå. Vent litt og prøv igjen.")
+      return
+    }
     setIsSubmitting(true)
-    await new Promise((r) => setTimeout(r, 1400))
-    const orderId = `IN-${Date.now().toString(36).toUpperCase()}`
-    router.push(
-      `/takk?ordre=${orderId}&epost=${encodeURIComponent(formData.epost)}&antall=${totalTickets}&total=${totalPrice}`
-    )
+    try {
+      const items: { ticket_type_id: string; quantity: number }[] = []
+      if (selection.voksen > 0) items.push({ ticket_type_id: voksenId, quantity: selection.voksen })
+      if (selection.barn > 0) items.push({ ticket_type_id: barnId, quantity: selection.barn })
+      if (selection.pensjonist > 0) items.push({ ticket_type_id: pensjonistId, quantity: selection.pensjonist })
+      const res = await fetch(`${API_BASE}/checkout/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items,
+          buyer: {
+            name: `${formData.fornavn.trim()} ${formData.etternavn.trim()}`,
+            email: formData.epost.trim(),
+            phone: normalizePhone(formData.telefon),
+          },
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || res.statusText || "Checkout feilet")
+      }
+      const data = await res.json() as { order_id: string; checkout_url: string }
+      window.location.href = data.checkout_url
+    } catch (e) {
+      setIsSubmitting(false)
+      toast.error(e instanceof Error ? e.message : "Noe gikk galt. Prøv igjen.")
+    }
   }
 
   return (
