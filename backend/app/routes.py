@@ -13,7 +13,8 @@ from app.schemas import (
     TicketTypeResponse,
     CheckinRequest,
 )
-from app.Vipps import create_checkout_session
+from app.Vipps import create_checkout_session, get_session_status
+from app.tickets import issue_tickets, send_ticket_email
 
 router = APIRouter()
 
@@ -123,13 +124,9 @@ async def checkout_create(req: CreateCheckoutRequest, db: Session = Depends(get_
     )
 
 
-# ─── Order status (frontend kan poll'e denne) ────────────────────────────────
+# ─── Order status (frontend poll'er – ved PENDING synkes status fra Vipps) ─────
 
-@router.get("/orders/{order_id}", response_model=OrderResponse)
-def get_order(order_id: str, db: Session = Depends(get_db)):
-    order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Ordre ikke funnet")
+def _order_to_response(order: Order) -> OrderResponse:
     total_qty = sum(oi.quantity for oi in order.items) if order.items else 0
     return OrderResponse(
         order_id=order.id,
@@ -139,6 +136,35 @@ def get_order(order_id: str, db: Session = Depends(get_db)):
         buyer_email=order.buyer_email,
         total_quantity=total_qty,
     )
+
+
+@router.get("/orders/{order_id}", response_model=OrderResponse)
+async def get_order(order_id: str, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Ordre ikke funnet")
+
+    # Ved PENDING: hent status fra Vipps (fallback hvis webhook ikke kom)
+    if order.status == OrderStatus.PENDING:
+        try:
+            session = await get_session_status(order_id)
+            state = (session.get("sessionState") or "").strip()
+            payment = session.get("paymentDetails") or {}
+            pay_state = (payment.get("state") or "").strip().upper()
+            if state == "PaymentSuccessful" or pay_state in ("AUTHORISED", "CAPTURED"):
+                order.status = OrderStatus.PAID
+                order.paid_at = order.paid_at or datetime.utcnow()
+                db.commit()
+                db.refresh(order)
+                try:
+                    tickets = issue_tickets(order, db)
+                    send_ticket_email(order, tickets, db)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    return _order_to_response(order)
 
 
 # ─── Ticket scanning (inn i lokalet) ─────────────────────────────────────────
