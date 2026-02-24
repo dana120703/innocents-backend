@@ -26,6 +26,7 @@ export default function TicketPage() {
     voksen: 0,
     barn: 0,
     pensjonist: 0,
+    test: 0,
   })
   const [email, setEmail] = useState("")
   const [emailError, setEmailError] = useState("")
@@ -40,7 +41,7 @@ export default function TicketPage() {
       .then((types: { id: string; name: string }[]) => {
         const map: Record<string, string> = {}
         for (const t of types) {
-          if (t.name === "Voksen" || t.name === "Barn" || t.name === "Pensjonist") {
+          if (["Voksen", "Barn", "Pensjonist", "Test"].includes(t.name)) {
             map[t.name] = t.id
           }
         }
@@ -51,11 +52,12 @@ export default function TicketPage() {
       )
   }, [])
 
-  const totalTickets = selection.voksen + selection.barn + selection.pensjonist
+  const totalTickets = selection.voksen + selection.barn + selection.pensjonist + selection.test
   const totalPrice =
     selection.voksen * 350 +
     selection.barn * 150 +
-    selection.pensjonist * 250
+    selection.pensjonist * 250 +
+    selection.test * 1
 
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault()
@@ -76,7 +78,8 @@ export default function TicketPage() {
     const voksenId = ticketTypeIds["Voksen"]
     const barnId = ticketTypeIds["Barn"]
     const pensjonistId = ticketTypeIds["Pensjonist"]
-    if (!voksenId || !barnId || !pensjonistId) {
+    const testId = ticketTypeIds["Test"]
+    if (!voksenId || !barnId || !pensjonistId || !testId) {
       toast.error("Billettyper ikke lastet ennå. Vent litt og prøv igjen.")
       return
     }
@@ -86,6 +89,7 @@ export default function TicketPage() {
       if (selection.voksen > 0) items.push({ ticket_type_id: voksenId, quantity: selection.voksen })
       if (selection.barn > 0) items.push({ ticket_type_id: barnId, quantity: selection.barn })
       if (selection.pensjonist > 0) items.push({ ticket_type_id: pensjonistId, quantity: selection.pensjonist })
+      if (selection.test > 0) items.push({ ticket_type_id: testId, quantity: selection.test })
       const res = await fetch(`${API_BASE}/checkout/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
