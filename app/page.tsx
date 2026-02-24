@@ -26,7 +26,8 @@ function getApiBase(): string {
   const env = process.env.NEXT_PUBLIC_API_URL
   if (env) return env.replace(/\/$/, "")
   if (window.location.origin.includes("localhost")) return "http://localhost:8000"
-  return window.location.origin
+  // Same origin: bruk tom streng så fetch("/ticket-types") treffer Next.js sin rewrite til backend
+  return ""
 }
 const API_BASE = getApiBase()
 
@@ -51,8 +52,7 @@ export default function TicketPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    if (!API_BASE) return
-    const url = `${API_BASE}/ticket-types`
+    const url = API_BASE ? `${API_BASE}/ticket-types` : "/ticket-types"
     fetch(url)
       .then((res) =>
         res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))
