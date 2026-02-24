@@ -49,6 +49,8 @@ class OrderResponse(BaseModel):
     status: str
     amount_nok: int
     created_at: datetime
+    buyer_email: str | None = None
+    total_quantity: int = 0
 
 
 # --- Tickets ---

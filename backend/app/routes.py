@@ -130,12 +130,14 @@ def get_order(order_id: str, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
-
+    total_qty = sum(oi.quantity for oi in order.items) if order.items else 0
     return OrderResponse(
         order_id=order.id,
         status=order.status.value,
         amount_nok=order.amount_nok,
         created_at=order.created_at,
+        buyer_email=order.buyer_email,
+        total_quantity=total_qty,
     )
 
 
