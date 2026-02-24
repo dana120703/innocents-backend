@@ -66,11 +66,23 @@ async def create_checkout_session(
         for i, item in enumerate(items)
     ]
 
+    # returnUrl med orderId – Vipps krever HTTPS
+    base = (settings.FRONTEND_RETURN_URL or "").strip().rstrip("/")
+    if not base.startswith("https://"):
+        if base.startswith("http://"):
+            base = "https://" + base[7:]
+        else:
+            base = "https://" + base if base else "https://innocents.vercel.app"
+    return_url = f"{base}/takk?orderId={order_id}"
+
+    # InitiatePaymentSessionRequest: type + reference på toppnivå (API-dokumentasjonen)
     body = {
+        "type": "PAYMENT",
+        "reference": order_id,
         "merchantInfo": {
             "merchantSerialNumber": settings.VIPPS_MSN,
             "callbackUrl": callback_url,
-            "returnUrl": settings.FRONTEND_RETURN_URL,
+            "returnUrl": return_url,
             "callbackAuthorizationToken": settings.VIPPS_WEBHOOK_SECRET,
         },
         "transaction": {
