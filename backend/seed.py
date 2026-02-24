@@ -42,6 +42,12 @@ ticket_types = [
         capacity=1000,
         is_active=True,
     ),
+    TicketType(
+        name="Gratis test",
+        price_nok=0,
+        capacity=1000,
+        is_active=True,
+    ),
 ]
 
 for tt in ticket_types:

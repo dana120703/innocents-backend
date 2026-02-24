@@ -27,6 +27,7 @@ export default function TicketPage() {
     barn: 0,
     pensjonist: 0,
     test: 0,
+    gratisTest: 0,
   })
   const [email, setEmail] = useState("")
   const [emailError, setEmailError] = useState("")
@@ -41,7 +42,7 @@ export default function TicketPage() {
       .then((types: { id: string; name: string }[]) => {
         const map: Record<string, string> = {}
         for (const t of types) {
-          if (["Voksen", "Barn", "Pensjonist", "Test"].includes(t.name)) {
+          if (["Voksen", "Barn", "Pensjonist", "Test", "Gratis test"].includes(t.name)) {
             map[t.name] = t.id
           }
         }
@@ -52,12 +53,13 @@ export default function TicketPage() {
       )
   }, [])
 
-  const totalTickets = selection.voksen + selection.barn + selection.pensjonist + selection.test
+  const totalTickets = selection.voksen + selection.barn + selection.pensjonist + selection.test + selection.gratisTest
   const totalPrice =
     selection.voksen * 350 +
     selection.barn * 150 +
     selection.pensjonist * 250 +
-    selection.test * 1
+    selection.test * 1 +
+    selection.gratisTest * 0
 
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault()
@@ -79,7 +81,8 @@ export default function TicketPage() {
     const barnId = ticketTypeIds["Barn"]
     const pensjonistId = ticketTypeIds["Pensjonist"]
     const testId = ticketTypeIds["Test"]
-    if (!voksenId || !barnId || !pensjonistId || !testId) {
+    const gratisTestId = ticketTypeIds["Gratis test"]
+    if (!voksenId || !barnId || !pensjonistId || !testId || !gratisTestId) {
       toast.error("Billettyper ikke lastet ennå. Vent litt og prøv igjen.")
       return
     }
@@ -90,6 +93,7 @@ export default function TicketPage() {
       if (selection.barn > 0) items.push({ ticket_type_id: barnId, quantity: selection.barn })
       if (selection.pensjonist > 0) items.push({ ticket_type_id: pensjonistId, quantity: selection.pensjonist })
       if (selection.test > 0) items.push({ ticket_type_id: testId, quantity: selection.test })
+      if (selection.gratisTest > 0) items.push({ ticket_type_id: gratisTestId, quantity: selection.gratisTest })
       const res = await fetch(`${API_BASE}/checkout/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
