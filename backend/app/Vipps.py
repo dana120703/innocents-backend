@@ -66,13 +66,16 @@ async def create_checkout_session(
         for i, item in enumerate(items)
     ]
 
-    # returnUrl med orderId – Vipps krever HTTPS
+    # returnUrl med orderId – Vipps krever HTTPS og ikke-lokal URL (ikke localhost)
     base = (settings.FRONTEND_RETURN_URL or "").strip().rstrip("/")
     if not base.startswith("https://"):
         if base.startswith("http://"):
             base = "https://" + base[7:]
         else:
             base = "https://" + base if base else "https://innocents.vercel.app"
+    # Vipps tillater ikke lokal URI – bruk produksjons-URL hvis localhost/127.0.0.1
+    if "localhost" in base or "127.0.0.1" in base:
+        base = "https://innocents.vercel.app"
     return_url = f"{base}/takk?orderId={order_id}"
 
     # InitiatePaymentSessionRequest: type + reference på toppnivå (API-dokumentasjonen)
