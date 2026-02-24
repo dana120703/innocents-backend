@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import Field
 from typing import List, Optional
 import json
 
@@ -45,12 +45,12 @@ class Settings(BaseSettings):
     # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str
     FRONTEND_RETURN_URL: str = "https://innocents.no"
-    CORS_ORIGINS: List[str] = ["https://innocents.no"]
+    # Leses som streng fra env (kommaseparert), så Railway ikke prøver JSON-parse
+    cors_origins_raw: str = Field(default="https://innocents.no", validation_alias="CORS_ORIGINS")
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors(cls, v):
-        return _parse_cors_origins(v) if v is not None else ["https://innocents.no"]
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        return _parse_cors_origins(self.cors_origins_raw)
 
     @property
     def VIPPS_BASE_URL(self) -> str:
