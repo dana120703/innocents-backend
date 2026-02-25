@@ -68,9 +68,10 @@ def issue_tickets(order: Order, db: Session) -> list[Ticket]:
 
 def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     """Sender billett-epost med QR-koder til kjøper."""
+    import logging
+    log = logging.getLogger(__name__)
     if not settings.RESEND_API_KEY:
-        import logging
-        logging.getLogger(__name__).warning("RESEND_API_KEY ikke satt – hopper over e-postutsendelse")
+        log.warning("RESEND_API_KEY ikke satt – hopper over e-postutsendelse")
         return
     ticket_blocks = ""
     for i, ticket in enumerate(tickets, 1):
@@ -113,4 +114,5 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
         "to": order.buyer_email,
         "subject": "🎟️ Dine billetter – En kveld for Gaza",
         "html": html,
-    }) 
+    })
+    log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id) 

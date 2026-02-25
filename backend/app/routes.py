@@ -159,8 +159,9 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
                 try:
                     tickets = issue_tickets(order, db)
                     send_ticket_email(order, tickets, db)
-                except Exception:
-                    pass
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).exception("E-post ved synk feilet: %s", e)
         except Exception:
             pass
 
