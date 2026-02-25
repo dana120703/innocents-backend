@@ -35,10 +35,10 @@ sjekker mot ProcessedWebhook for å unngå dobbeltbehandling, og kaller issue_ti
 
 """
 
-# Vipps events som betyr "betalt"
-PAID_EVENTS = {"PaymentCaptured", "PaymentAuthorized"}
+# Vipps events som betyr "betalt" (begge format: PaymentCaptured og CAPTURED)
+PAID_EVENTS = {"PaymentCaptured", "PaymentAuthorized", "CAPTURED", "AUTHORIZED"}
 # Vipps events som betyr "mislyktes"
-FAILED_EVENTS = {"PaymentAborted", "PaymentExpired", "PaymentCancelled", "SessionTerminated"}
+FAILED_EVENTS = {"PaymentAborted", "PaymentExpired", "PaymentCancelled", "SessionTerminated", "ABORTED", "EXPIRED", "TERMINATED", "CANCELLED"}
 
 
 @router.post("/webhooks/vipps")
@@ -59,20 +59,24 @@ async def vipps_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Ugyldig JSON")
 
-    event_name = body.get("name")          # f.eks. "PaymentCaptured"
-    reference = body.get("reference")      # = order_id
-    event_id = body.get("idempotencyKey") or body.get("id") or f"{reference}:{event_name}"
+    # Vipps kan sende event som "name", "event", "type" eller lignende
+    event_name = body.get("name") or body.get("event") or body.get("type") or body.get("paymentState")
+    reference = body.get("reference") or body.get("orderId")
+    event_id = body.get("idempotencyKey") or body.get("id") or (f"{reference}:{event_name}" if reference and event_name else None)
+
+    if not event_name:
+        logger.warning("Webhook uten event-navn, body-keys: %s", list(body.keys())[:20])
 
     logger.info(f"Webhook mottatt: {event_name} for ordre {reference}")
 
-    # ─── 3) Idempotency – ignorer duplikater ──────────────────────────────────
-    existing = db.query(ProcessedWebhook).filter(ProcessedWebhook.id == event_id).first()
-    if existing:
-        logger.info(f"Duplikat webhook ignorert: {event_id}")
-        return {"ok": True, "duplicate": True}
-
-    db.add(ProcessedWebhook(id=event_id))
-    db.commit()
+    # Idempotency – ignorer duplikater (trenger event_id)
+    if event_id:
+        existing = db.query(ProcessedWebhook).filter(ProcessedWebhook.id == event_id).first()
+        if existing:
+            logger.info(f"Duplikat webhook ignorert: {event_id}")
+            return {"ok": True, "duplicate": True}
+        db.add(ProcessedWebhook(id=event_id))
+        db.commit()
 
     # ─── 4) Finn ordre ────────────────────────────────────────────────────────
     if not reference:
@@ -105,8 +109,14 @@ async def vipps_webhook(
         status_map = {
             "PaymentAborted": OrderStatus.CANCELLED,
             "PaymentCancelled": OrderStatus.CANCELLED,
+            "Aborted": OrderStatus.CANCELLED,
+            "ABORTED": OrderStatus.CANCELLED,
             "PaymentExpired": OrderStatus.EXPIRED,
+            "Expired": OrderStatus.EXPIRED,
+            "EXPIRED": OrderStatus.EXPIRED,
             "SessionTerminated": OrderStatus.EXPIRED,
+            "TERMINATED": OrderStatus.EXPIRED,
+            "CANCELLED": OrderStatus.CANCELLED,
         }
         order.status = status_map.get(event_name, OrderStatus.FAILED)
         db.commit()
