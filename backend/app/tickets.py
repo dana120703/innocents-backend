@@ -109,10 +109,13 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     </html>
     """
 
-    resend.Emails.send({
-        "from": settings.EMAIL_FROM,
-        "to": order.buyer_email,
-        "subject": "🎟️ Dine billetter – En kveld for Gaza",
-        "html": html,
-    })
-    log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id) 
+    try:
+        resend.Emails.send({
+            "from": settings.EMAIL_FROM,
+            "to": order.buyer_email,
+            "subject": "🎟️ Dine billetter – En kveld for Gaza",
+            "html": html,
+        })
+        log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id)
+    except Exception as e:
+        log.exception("Resend e-post feilet til %s: %s", order.buyer_email, e) 
