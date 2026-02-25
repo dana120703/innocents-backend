@@ -192,7 +192,7 @@ export default function TicketPage() {
             <div className="grid gap-2 sm:grid-cols-2">
               <div>
                 <Label htmlFor="name" className="text-muted-foreground text-xs">
-                  Navn (valgfritt)
+                  Navn
                 </Label>
                 <Input
                   id="name"
@@ -205,7 +205,7 @@ export default function TicketPage() {
               </div>
               <div>
                 <Label htmlFor="phone" className="text-muted-foreground text-xs">
-                  Telefon (valgfritt)
+                  Telefon
                 </Label>
                 <Input
                   id="phone"
