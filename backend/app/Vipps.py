@@ -79,6 +79,8 @@ async def create_checkout_session(
     return_url = f"{base}/takk?orderId={order_id}"
 
     # InitiatePaymentSessionRequest: type + reference på toppnivå (API-dokumentasjonen)
+    # configuration.elements = "Full" eller "PaymentAndContactInfo" er NØDVENDIG for å få
+    # navn, e-post og telefon fra Vipps. Uten dette vises kun betalingspanel og vi får ikke kjøperinfo.
     body = {
         "type": "PAYMENT",
         "reference": order_id,
@@ -96,6 +98,9 @@ async def create_checkout_session(
             },
             "paymentDescription": "En kveld for Gaza – Innocents",
             "orderLines": order_lines,
+        },
+        "configuration": {
+            "elements": "PaymentAndContactInfo",  # Vis kontaktpanel (navn, e-post, telefon) slik at vi får kjøperinfo i session
         },
     }
 
@@ -134,3 +139,45 @@ async def get_session_status(order_id: str) -> dict:
     if resp.status_code == 200:
         return resp.json()
     return {}
+
+
+def parse_buyer_from_session(session: dict) -> dict:
+    """
+    Henter kjøperens navn, e-post og telefon fra Vipps session-respons.
+    Returnerer dict med name, email, phone (verdier kan være None).
+    Bruker userInfo, billingDetails og shippingDetails etter dokumentasjonen.
+    """
+    out = {"name": None, "email": None, "phone": None}
+    if not session:
+        return out
+
+    # userInfo har ofte sub og email
+    user_info = session.get("userInfo") or {}
+    if isinstance(user_info, dict):
+        out["email"] = (user_info.get("email") or "").strip() or None
+
+    # billingDetails: firstName, lastName, email, phoneNumber
+    billing = session.get("billingDetails") or {}
+    if isinstance(billing, dict):
+        first = (billing.get("firstName") or "").strip()
+        last = (billing.get("lastName") or "").strip()
+        if first or last:
+            out["name"] = f"{first} {last}".strip() or None
+        if not out["email"]:
+            out["email"] = (billing.get("email") or "").strip() or None
+        out["phone"] = (billing.get("phoneNumber") or "").strip() or None
+
+    # shippingDetails hvis billing ikke hadde alt
+    shipping = session.get("shippingDetails") or {}
+    if isinstance(shipping, dict):
+        if not out["name"]:
+            first = (shipping.get("firstName") or "").strip()
+            last = (shipping.get("lastName") or "").strip()
+            if first or last:
+                out["name"] = f"{first} {last}".strip() or None
+        if not out["email"]:
+            out["email"] = (shipping.get("email") or "").strip() or None
+        if not out["phone"]:
+            out["phone"] = (shipping.get("phoneNumber") or "").strip() or None
+
+    return out

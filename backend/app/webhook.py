@@ -23,6 +23,7 @@ from app.db import get_db
 from app.models import Order, OrderStatus, ProcessedWebhook
 from app.tickets import issue_tickets, send_ticket_email
 from app.config import settings
+from app.Vipps import get_session_status, parse_buyer_from_session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -91,6 +92,21 @@ async def vipps_webhook(
     # ─── 5) Håndter event ─────────────────────────────────────────────────────
     if event_name in PAID_EVENTS and order.status != OrderStatus.PAID:
         logger.info(f"Ordre {order.id} markert som PAID")
+        # Hent kjøperinfo fra Vipps session (navn, e-post, telefon). Vipps returnerer ofte kun
+        # userInfo/billingDetails når sessionState er PaymentInitiated – ved PaymentCaptured
+        # kan data være borte. Derfor må create_checkout_session bruke configuration.elements
+        # = "PaymentAndContactInfo" slik at kunden får kontaktpanel og vi får data.
+        try:
+            session = await get_session_status(reference)
+            buyer = parse_buyer_from_session(session)
+            if buyer.get("name"):
+                order.buyer_name = buyer["name"]
+            if buyer.get("email"):
+                order.buyer_email = buyer["email"]
+            if buyer.get("phone"):
+                order.buyer_phone = buyer["phone"]
+        except Exception as e:
+            logger.debug("Kunne ikke hente kjøperinfo fra Vipps: %s", e)
         order.status = OrderStatus.PAID
         order.paid_at = datetime.utcnow()
         db.commit()

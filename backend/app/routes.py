@@ -13,7 +13,7 @@ from app.schemas import (
     TicketTypeResponse,
     CheckinRequest,
 )
-from app.Vipps import create_checkout_session, get_session_status
+from app.Vipps import create_checkout_session, get_session_status, parse_buyer_from_session
 from app.tickets import issue_tickets, send_ticket_email
 
 router = APIRouter()
@@ -152,6 +152,14 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
             payment = session.get("paymentDetails") or {}
             pay_state = (payment.get("state") or "").strip().upper()
             if state == "PaymentSuccessful" or pay_state in ("AUTHORISED", "CAPTURED"):
+                # Oppdater kjøperinfo fra Vipps hvis tilgjengelig
+                buyer = parse_buyer_from_session(session)
+                if buyer.get("name"):
+                    order.buyer_name = buyer["name"]
+                if buyer.get("email"):
+                    order.buyer_email = buyer["email"]
+                if buyer.get("phone"):
+                    order.buyer_phone = buyer["phone"]
                 order.status = OrderStatus.PAID
                 order.paid_at = order.paid_at or datetime.utcnow()
                 db.commit()
@@ -164,6 +172,38 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
                     logging.getLogger(__name__).exception("E-post ved synk feilet: %s", e)
         except Exception:
             pass
+
+    # PAID men mangler kjøperinfo (Vipps returnerer ofte kun userInfo når sessionState er PaymentInitiated)?
+    # Prøv å hente fra Vipps når bruker åpner takk-siden – noen ganger er data fortsatt tilgjengelig.
+    if order.status == OrderStatus.PAID and (not order.buyer_email or order.buyer_name in (None, "Vipps-kunde")):
+        try:
+            session = await get_session_status(order_id)
+            buyer = parse_buyer_from_session(session)
+            updated = False
+            if buyer.get("name") and order.buyer_name in (None, "Vipps-kunde"):
+                order.buyer_name = buyer["name"]
+                updated = True
+            if buyer.get("email") and not order.buyer_email:
+                order.buyer_email = buyer["email"]
+                updated = True
+            if buyer.get("phone") and not order.buyer_phone:
+                order.buyer_phone = buyer["phone"]
+                updated = True
+            if updated:
+                db.commit()
+                db.refresh(order)
+        except Exception:
+            pass
+
+    # Ordre allerede PAID men e-post ikke sendt (f.eks. webhook feilet): send når de åpner takk-siden
+    if order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
+        tickets = list(order.tickets) if order.tickets else []
+        if tickets:
+            try:
+                send_ticket_email(order, tickets, db)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).exception("E-post ved takk-side feilet: %s", e)
 
     return _order_to_response(order)
 
