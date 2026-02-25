@@ -56,23 +56,24 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       {tickets.map((ticket) => {
         const count = selection[ticket.id]
         const isActive = count > 0
+        const isFree = ticket.price === 0
 
         return (
           <div
             key={ticket.id}
             className={cn(
-              "flex items-center justify-between rounded-xl border-2 px-4 py-4 transition-all duration-150 md:px-5",
+              "flex items-center justify-between gap-4 rounded-xl border px-4 py-3.5 transition-all duration-200 md:px-5 md:py-4",
               isActive
-                ? "border-primary bg-primary/5"
-                : "border-border bg-card hover:border-primary/30"
+                ? "border-primary/60 bg-primary/5 shadow-sm"
+                : "border-border bg-muted/30 hover:border-primary/40 hover:bg-muted/50"
             )}
           >
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-foreground md:text-base">
+            <div className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-foreground md:text-base">
                 {ticket.label}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -80,27 +81,32 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
               </span>
             </div>
 
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-bold tabular-nums text-foreground md:text-base">
-                {ticket.price === 0 ? "Gratis" : `${ticket.price} kr`}
+            <div className="flex shrink-0 items-center gap-3 md:gap-4">
+              <span
+                className={cn(
+                  "min-w-[4rem] text-right text-sm font-bold tabular-nums md:text-base",
+                  isFree ? "text-muted-foreground" : "text-foreground"
+                )}
+              >
+                {isFree ? "Gratis" : `${ticket.price} kr`}
               </span>
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5 rounded-lg bg-background/80 p-0.5 shadow-inner">
                 <button
                   type="button"
                   onClick={() => updateCount(ticket.id, -1)}
                   disabled={count === 0}
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+                    "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
                     count === 0
-                      ? "cursor-not-allowed text-muted-foreground/30"
-                      : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground"
+                      ? "cursor-not-allowed text-muted-foreground/40"
+                      : "text-primary hover:bg-primary/15 hover:text-primary"
                   )}
                   aria-label={`Reduser antall ${ticket.label}-billetter`}
                 >
-                  <Minus className="h-3.5 w-3.5" />
+                  <Minus className="h-4 w-4" />
                 </button>
                 <span
-                  className="flex h-8 w-8 items-center justify-center text-sm font-semibold tabular-nums text-foreground"
+                  className="flex h-9 w-9 items-center justify-center text-sm font-semibold tabular-nums text-foreground"
                   aria-live="polite"
                   aria-label={`${count} ${ticket.label}-billetter valgt`}
                 >
@@ -111,14 +117,14 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
                   onClick={() => updateCount(ticket.id, 1)}
                   disabled={count === 20}
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+                    "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
                     count === 20
-                      ? "cursor-not-allowed text-muted-foreground/30"
-                      : "bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground"
+                      ? "cursor-not-allowed text-muted-foreground/40"
+                      : "text-primary hover:bg-primary/15 hover:text-primary"
                   )}
                   aria-label={`Legg til ${ticket.label}-billett`}
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h-4 w-4" />
                 </button>
               </div>
             </div>

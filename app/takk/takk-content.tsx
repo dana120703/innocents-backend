@@ -2,9 +2,38 @@
 
 import { useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import { CheckCircle2, ArrowLeft, Mail, XCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+
+function PageHeader() {
+  return (
+    <header className="border-b border-border bg-card/80 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
+        <div className="relative h-10 w-10 shrink-0">
+          <Image
+            src="/logo.png"
+            alt="Innocents"
+            width={40}
+            height={40}
+            className="object-contain"
+            unoptimized
+            onError={(e) => {
+              e.currentTarget.style.display = "none"
+            }}
+          />
+        </div>
+        <div className="flex flex-col">
+          <span className="text-base font-semibold tracking-tight text-foreground">
+            Innocents Norge
+          </span>
+          <span className="text-sm text-foreground/80">En kveld for Gaza</span>
+        </div>
+      </div>
+    </header>
+  )
+}
 
 function getApiBase(): string {
   if (typeof window === "undefined") return ""
@@ -16,12 +45,20 @@ function getApiBase(): string {
 
 type OrderStatus = "CREATED" | "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED"
 
+interface OrderItemState {
+  ticket_type_name: string
+  quantity: number
+}
+
 interface OrderState {
   order_id: string
   status: OrderStatus
   amount_nok: number
   buyer_email?: string
+  buyer_name?: string
+  buyer_phone?: string
   total_quantity: number
+  items?: OrderItemState[]
 }
 
 const POLL_INTERVAL_MS = 2000
@@ -90,13 +127,7 @@ export function TakkContent() {
   if (!orderId) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        <div className="border-b border-border bg-card">
-          <div className="mx-auto flex max-w-2xl items-center px-4 py-3">
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              Innocents Norge
-            </span>
-          </div>
-        </div>
+        <PageHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-4 py-16">
           <p className="text-muted-foreground">Ingen ordre å vise.</p>
           <Button variant="outline" asChild className="gap-2">
@@ -113,13 +144,7 @@ export function TakkContent() {
   if (error) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        <div className="border-b border-border bg-card">
-          <div className="mx-auto flex max-w-2xl items-center px-4 py-3">
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              Innocents Norge
-            </span>
-          </div>
-        </div>
+        <PageHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-4 py-16">
           <p className="text-destructive">{error}</p>
           <Button variant="outline" asChild className="gap-2">
@@ -137,13 +162,7 @@ export function TakkContent() {
   if (loading || (order?.status === "PENDING" || order?.status === "CREATED")) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        <div className="border-b border-border bg-card">
-          <div className="mx-auto flex max-w-2xl items-center px-4 py-3">
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              Innocents Norge
-            </span>
-          </div>
-        </div>
+        <PageHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-4 py-16">
           <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
           <h1 className="font-serif text-xl text-foreground">Venter på betaling</h1>
@@ -160,13 +179,7 @@ export function TakkContent() {
   if (order && ["CANCELLED", "EXPIRED", "FAILED"].includes(order.status)) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        <div className="border-b border-border bg-card">
-          <div className="mx-auto flex max-w-2xl items-center px-4 py-3">
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              Innocents Norge
-            </span>
-          </div>
-        </div>
+        <PageHeader />
         <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-4 py-16">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
             <XCircle className="h-8 w-8 text-destructive" />
@@ -189,13 +202,7 @@ export function TakkContent() {
   // PAID – suksess
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <div className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-2xl items-center px-4 py-3">
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            Innocents Norge
-          </span>
-        </div>
-      </div>
+      <PageHeader />
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-8 px-4 py-16">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent">
@@ -220,26 +227,50 @@ export function TakkContent() {
                   {order.order_id}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Antall billetter</span>
-                <span className="font-semibold text-foreground">{order.total_quantity}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
+              {order.items && order.items.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Bestilling</p>
+                  {order.items.map((line, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="text-foreground">
+                        {line.quantity}× {line.ticket_type_name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Antall billetter</span>
+                  <span className="font-semibold text-foreground">{order.total_quantity}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
                 <span className="text-muted-foreground">Totalt betalt</span>
                 <span className="font-semibold text-foreground">
                   {order.amount_nok.toLocaleString("nb-NO")} kr
                 </span>
               </div>
             </div>
-            {order.buyer_email && (
-              <div className="border-t border-border px-5 py-4">
-                <div className="flex items-start gap-2.5">
-                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Bekreftelse sendt til{" "}
-                    <span className="font-medium text-foreground">{order.buyer_email}</span>
+            {(order.buyer_name || order.buyer_email || order.buyer_phone) && (
+              <div className="border-t border-border px-5 py-4 space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Registrert kjøperinfo</p>
+                {order.buyer_name && (
+                  <p className="text-sm text-foreground">Navn: {order.buyer_name}</p>
+                )}
+                {order.buyer_email && (
+                  <p className="text-sm text-foreground flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                    E-post: {order.buyer_email}
                   </p>
-                </div>
+                )}
+                {order.buyer_phone && (
+                  <p className="text-sm text-foreground">Telefon: {order.buyer_phone}</p>
+                )}
+                {order.buyer_email && (
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Bekreftelse sendt til {order.buyer_email}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -253,10 +284,19 @@ export function TakkContent() {
         </Button>
       </main>
 
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-6">
-          <p className="text-xs text-muted-foreground">
-            &copy; 2026 Innocents Norge
+      <footer className="mt-auto border-t border-border bg-card/30">
+        <div className="mx-auto flex max-w-2xl flex-col items-center gap-2 px-4 py-6 text-center">
+          <p className="text-sm text-foreground/90">&copy; 2026 Innocents Norge · En kveld for Gaza</p>
+          <p className="text-sm text-foreground/80">
+            Nettsiden er hostet og utviklet av{" "}
+            <a
+              href="https://pixlmedia.no"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline underline-offset-2 hover:text-foreground"
+            >
+              Pixl Media
+            </a>
           </p>
         </div>
       </footer>

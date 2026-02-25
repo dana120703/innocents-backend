@@ -44,13 +44,22 @@ class CreateCheckoutResponse(BaseModel):
 
 # --- Orders ---
 
+class OrderItemResponse(BaseModel):
+    """Én linje i ordren: type billett + antall."""
+    ticket_type_name: str
+    quantity: int
+
+
 class OrderResponse(BaseModel):
     order_id: str
     status: str
     amount_nok: int
     created_at: datetime
     buyer_email: str | None = None
+    buyer_name: str | None = None
+    buyer_phone: str | None = None
     total_quantity: int = 0
+    items: List[OrderItemResponse] = []  # f.eks. [{ ticket_type_name: "Voksne (+12 år)", quantity: 2 }, ...]
 
 
 # --- Tickets ---

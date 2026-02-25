@@ -128,13 +128,21 @@ async def checkout_create(req: CreateCheckoutRequest, db: Session = Depends(get_
 
 def _order_to_response(order: Order) -> OrderResponse:
     total_qty = sum(oi.quantity for oi in order.items) if order.items else 0
+    items = []
+    for oi in order.items or []:
+        tt = oi.ticket_type
+        name = tt.name if tt else "Billett"
+        items.append({"ticket_type_name": name, "quantity": oi.quantity})
     return OrderResponse(
         order_id=order.id,
         status=order.status.value,
         amount_nok=order.amount_nok,
         created_at=order.created_at,
         buyer_email=order.buyer_email,
+        buyer_name=order.buyer_name,
+        buyer_phone=order.buyer_phone,
         total_quantity=total_qty,
+        items=items,
     )
 
 

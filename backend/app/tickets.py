@@ -75,6 +75,14 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     if not settings.RESEND_API_KEY:
         log.warning("RESEND_API_KEY ikke satt – hopper over e-postutsendelse")
         return
+    # Oppsummering: f.eks. "2× Voksne (+12 år), 1× Barn (4-12 år)"
+    order_lines = []
+    for item in order.items:
+        tt = db.query(TicketType).filter(TicketType.id == item.ticket_type_id).first()
+        name = tt.name if tt else "Billett"
+        order_lines.append(f"{item.quantity}× {name}")
+    order_summary = ", ".join(order_lines) if order_lines else f"{len(tickets)} billett(er)"
+
     ticket_blocks = ""
     for i, ticket in enumerate(tickets, 1):
         tt = db.query(TicketType).filter(TicketType.id == ticket.ticket_type_id).first()
@@ -99,6 +107,9 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
 
         <p>Hei {order.buyer_name},</p>
         <p>Tusen takk for at du støtter Gaza-kvelden! Her er dine billetter.</p>
+        <p style="margin: 16px 0; padding: 12px 16px; background: #f5f5f5; border-radius: 8px; font-size: 14px;">
+            <strong>Du bestilte:</strong> {order_summary}
+        </p>
 
         {ticket_blocks}
 

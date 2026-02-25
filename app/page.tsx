@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, type FormEvent } from "react"
+import Image from "next/image"
 import { toast } from "sonner"
 import {
   TicketSelector,
@@ -33,6 +34,8 @@ export default function TicketPage() {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [emailError, setEmailError] = useState("")
+  const [nameError, setNameError] = useState("")
+  const [phoneError, setPhoneError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
@@ -75,17 +78,29 @@ export default function TicketPage() {
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault()
     setEmailError("")
+    setNameError("")
+    setPhoneError("")
     if (totalTickets === 0) {
       toast.error("Velg minst én billett")
       return
     }
     const trimmed = email.trim()
     if (!trimmed) {
-      setEmailError("E-post er obligatorisk – billettene sendes hit")
+      setEmailError("E-post er obligatorisk – billett og kvittering sendes hit")
       return
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setEmailError("Ugyldig e-postadresse")
+      return
+    }
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setNameError("Navn er påkrevd")
+      return
+    }
+    const trimmedPhone = phone.trim()
+    if (!trimmedPhone) {
+      setPhoneError("Telefon er påkrevd")
       return
     }
     const voksneId = ticketTypeIds["Voksne (+12 år)"]
@@ -112,8 +127,8 @@ export default function TicketPage() {
           items,
           buyer: {
             email: trimmed,
-            ...(name.trim() && { name: name.trim() }),
-            ...(phone.trim() && { phone: phone.trim() }),
+            name: trimmedName,
+            phone: trimmedPhone,
           },
         }),
       })
@@ -130,99 +145,152 @@ export default function TicketPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b border-border bg-card/80 backdrop-blur-sm">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30">
+      {/* Header – enkel og rolig */}
+      <header className="sticky top-0 z-10 border-b border-border/60 bg-background/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            Innocents Norge
-          </span>
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-card shadow-sm ring-1 ring-border/50">
+              <Image
+                src="/logo.png"
+                alt="Innocents"
+                width={44}
+                height={44}
+                className="object-contain p-0.5"
+                unoptimized
+                onError={(e) => {
+                  e.currentTarget.style.display = "none"
+                }}
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold tracking-tight text-foreground">
+                Innocents Norge
+              </span>
+              <span className="text-xs text-muted-foreground">En kveld for Gaza</span>
+            </div>
+          </div>
+          <span className="flex items-center gap-1.5 rounded-full bg-muted/80 px-2.5 py-1.5 text-xs text-muted-foreground">
             <Lock className="h-3 w-3" />
-            Sikker bestilling
+            Sikker betaling
           </span>
         </div>
-      </div>
+      </header>
 
-      <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-8 md:py-12">
-        <div className="flex flex-col gap-2 text-center">
-          <h1 className="font-serif text-3xl text-foreground md:text-4xl text-balance">
-            Kjøp billetter
+      <main className="mx-auto max-w-2xl px-4 pb-12 pt-6 md:pt-10">
+        {/* Hero – tydelig hendelse og verdi */}
+        <div className="mb-8 text-center">
+          <h1 className="font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+            En kveld for Gaza
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Velg antall og bestill – du betaler i Vipps.
+          <p className="mt-2 text-base text-muted-foreground md:text-lg">
+            Velg billetter under. Du betaler sikkert med Vipps og får billettene på e-post.
           </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">✓ Vipps</span>
+            <span className="flex items-center gap-1.5">✓ Billetter på e-post</span>
+            <span className="flex items-center gap-1.5">✓ Rask bestilling</span>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-8">
-          <section className="flex flex-col gap-4">
-            <h2 className="text-base font-semibold text-foreground">Velg billetter</h2>
+        {/* Skjema i kort for fokus */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-sm md:p-6">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Velg antall billetter
+            </h2>
             <TicketSelector selection={selection} onChange={setSelection} />
 
             {totalTickets > 0 && (
-              <div className="flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-primary-foreground shadow-sm">
-                <span className="text-sm">
+              <div className="mt-4 flex items-center justify-between rounded-xl bg-primary px-4 py-3.5 text-primary-foreground shadow-md">
+                <span className="text-sm font-medium">
                   {totalTickets} {totalTickets === 1 ? "billett" : "billetter"}
                 </span>
-                <span className="text-base font-bold tabular-nums">
+                <span className="text-lg font-bold tabular-nums">
                   {totalPrice.toLocaleString("nb-NO")} kr
                 </span>
               </div>
             )}
           </section>
 
-          <section className="flex flex-col gap-2">
-            <Label htmlFor="email" className="text-foreground">
-              E-post (billettene sendes hit)
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="din@epost.no"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value)
-                setEmailError("")
-              }}
-              className={emailError ? "border-destructive" : ""}
-              autoComplete="email"
-            />
-            {emailError && (
-              <p className="text-sm text-destructive">{emailError}</p>
-            )}
-            <div className="grid gap-2 sm:grid-cols-2">
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-sm md:p-6">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Dine opplysninger
+            </h2>
+            <div className="flex flex-col gap-4">
               <div>
-                <Label htmlFor="name" className="text-muted-foreground text-xs">
-                  Navn
+                <Label htmlFor="email" className="text-foreground">
+                  E-post
                 </Label>
+                <p className="mb-1.5 text-xs text-muted-foreground">Billett og kvittering sendes hit</p>
                 <Input
-                  id="name"
-                  type="text"
-                  placeholder="Ditt navn"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  autoComplete="name"
+                  id="email"
+                  type="email"
+                  placeholder="din@epost.no"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    setEmailError("")
+                  }}
+                  className={emailError ? "border-destructive" : ""}
+                  autoComplete="email"
                 />
+                {emailError && (
+                  <p className="mt-1 text-sm text-destructive">{emailError}</p>
+                )}
               </div>
-              <div>
-                <Label htmlFor="phone" className="text-muted-foreground text-xs">
-                  Telefon
-                </Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+47 xxx xx xxx"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  autoComplete="tel"
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="name" className="text-foreground">
+                    Navn <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="Fornavn og etternavn"
+                    value={name}
+                    required
+                    onChange={(e) => {
+                      setName(e.target.value)
+                      setNameError("")
+                    }}
+                    autoComplete="name"
+                    className={`mt-1.5 ${nameError ? "border-destructive" : ""}`}
+                  />
+                  {nameError && (
+                    <p className="mt-1 text-sm text-destructive">{nameError}</p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="phone" className="text-foreground">
+                    Telefon <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="+47 xxx xx xxx"
+                    value={phone}
+                    required
+                    onChange={(e) => {
+                      setPhone(e.target.value)
+                      setPhoneError("")
+                    }}
+                    autoComplete="tel"
+                    className={`mt-1.5 ${phoneError ? "border-destructive" : ""}`}
+                  />
+                  {phoneError && (
+                    <p className="mt-1 text-sm text-destructive">{phoneError}</p>
+                  )}
+                </div>
               </div>
             </div>
           </section>
 
+          {/* CTA – tydelig og innbydende */}
           <Button
             type="submit"
             disabled={totalTickets === 0 || isSubmitting}
-            className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-40"
+            className="h-14 w-full rounded-xl text-base font-semibold shadow-lg transition hover:shadow-xl disabled:opacity-50"
             size="lg"
           >
             {isSubmitting ? (
@@ -232,19 +300,30 @@ export default function TicketPage() {
               </span>
             ) : totalTickets > 0 ? (
               <span className="flex items-center justify-center gap-2">
-                <Ticket className="h-4 w-4" />
-                Bestill nå
+                <Ticket className="h-5 w-5" />
+                Gå til betaling med Vipps
               </span>
             ) : (
-              "Velg billetter for å fortsette"
+              "Velg antall billetter over"
             )}
           </Button>
         </form>
       </main>
 
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-6">
-          <p className="text-xs text-muted-foreground">&copy; 2026 Innocents Norge</p>
+      <footer className="mt-12 border-t border-border/60 bg-card/40 py-6">
+        <div className="mx-auto flex max-w-2xl flex-col items-center gap-2 px-4 text-center">
+          <p className="text-xs text-muted-foreground">&copy; 2026 Innocents Norge · En kveld for Gaza</p>
+          <p className="text-xs text-muted-foreground">
+            Nettsiden er hostet og utviklet av{" "}
+            <a
+              href="https://pixlmedia.no"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              Pixl Media
+            </a>
+          </p>
         </div>
       </footer>
     </div>
