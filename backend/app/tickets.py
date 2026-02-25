@@ -3,6 +3,8 @@ Genererer QR-koder og sender billett-epost via Resend.
 """
 import io
 import base64
+import logging
+from datetime import datetime
 import qrcode
 import resend
 from sqlalchemy.orm import Session
@@ -117,5 +119,7 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
             "html": html,
         })
         log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id)
+        order.ticket_email_sent_at = datetime.utcnow()
+        db.commit()
     except Exception as e:
         log.exception("Resend e-post feilet til %s: %s", order.buyer_email, e) 

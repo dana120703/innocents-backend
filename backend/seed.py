@@ -1,6 +1,10 @@
+#!/usr/bin/env python3
 """
 Kjør én gang for å legge inn billettyper i databasen:
-  python seed.py
+  python3 seed.py
+  (eller: .venv/bin/python3 seed.py  fra backend-mappen)
+
+Krever at DATABASE_URL er satt (f.eks. i .env) og at du har nett til DB (Supabase).
 """
 from app.db import SessionLocal, engine
 from app.models import Base, TicketType
@@ -19,21 +23,27 @@ db = SessionLocal()
 
 ticket_types = [
     TicketType(
-        name="Voksen",
-        price_nok=350,
+        name="Voksne (+12 år)",
+        price_nok=249,
+        capacity=500,
+        is_active=True,
+    ),
+    TicketType(
+        name="Barn (4-12 år)",
+        price_nok=50,
         capacity=300,
         is_active=True,
     ),
     TicketType(
-        name="Barn",
-        price_nok=150,
-        capacity=100,
+        name="Barn (0-3 år)",
+        price_nok=0,
+        capacity=300,
         is_active=True,
     ),
     TicketType(
-        name="Pensjonist",
-        price_nok=250,
-        capacity=100,
+        name="Bestille bord (10 personer)",
+        price_nok=2241,
+        capacity=50,
         is_active=True,
     ),
     TicketType(

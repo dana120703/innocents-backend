@@ -63,6 +63,7 @@ class Order(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     paid_at = Column(DateTime, nullable=True)
+    ticket_email_sent_at = Column(DateTime, nullable=True)  # unngår duplikat e-post
 
     items = relationship("OrderItem", back_populates="order")
     tickets = relationship("Ticket", back_populates="order")

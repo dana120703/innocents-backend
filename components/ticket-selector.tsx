@@ -4,30 +4,37 @@ import { cn } from "@/lib/utils"
 import { Minus, Plus } from "lucide-react"
 
 export interface TicketSelection {
-  voksen: number
-  barn: number
-  pensjonist: number
+  voksne: number
+  barn_4_12: number
+  barn_0_3: number
+  bord: number
   test: number
 }
 
 const tickets = [
   {
-    id: "voksen" as const,
-    label: "Voksen",
-    age: "18+",
-    price: 350,
+    id: "voksne" as const,
+    label: "Voksne (+12 år)",
+    age: "Voksen",
+    price: 249,
   },
   {
-    id: "barn" as const,
-    label: "Barn",
-    age: "0 - 17",
-    price: 150,
+    id: "barn_4_12" as const,
+    label: "Barn (4-12 år)",
+    age: "Barn",
+    price: 50,
   },
   {
-    id: "pensjonist" as const,
-    label: "Pensjonist",
-    age: "67+",
-    price: 250,
+    id: "barn_0_3" as const,
+    label: "Barn (0-3 år)",
+    age: "Gratis",
+    price: 0,
+  },
+  {
+    id: "bord" as const,
+    label: "Bestille bord (10 personer)",
+    age: "Bord for 10",
+    price: 2241,
   },
   {
     id: "test" as const,
@@ -75,7 +82,7 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
 
             <div className="flex items-center gap-4">
               <span className="text-sm font-bold tabular-nums text-foreground md:text-base">
-                {ticket.price} kr
+                {ticket.price === 0 ? "Gratis" : `${ticket.price} kr`}
               </span>
               <div className="flex items-center gap-0.5">
                 <button

@@ -23,12 +23,15 @@ const API_BASE = getApiBase()
 export default function TicketPage() {
   const [ticketTypeIds, setTicketTypeIds] = useState<Record<string, string>>({})
   const [selection, setSelection] = useState<TicketSelection>({
-    voksen: 0,
-    barn: 0,
-    pensjonist: 0,
+    voksne: 0,
+    barn_4_12: 0,
+    barn_0_3: 0,
+    bord: 0,
     test: 0,
   })
   const [email, setEmail] = useState("")
+  const [name, setName] = useState("")
+  const [phone, setPhone] = useState("")
   const [emailError, setEmailError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -41,7 +44,15 @@ export default function TicketPage() {
       .then((types: { id: string; name: string }[]) => {
         const map: Record<string, string> = {}
         for (const t of types) {
-          if (["Voksen", "Barn", "Pensjonist", "Test"].includes(t.name)) {
+          if (
+            [
+              "Voksne (+12 år)",
+              "Barn (4-12 år)",
+              "Barn (0-3 år)",
+              "Bestille bord (10 personer)",
+              "Test",
+            ].includes(t.name)
+          ) {
             map[t.name] = t.id
           }
         }
@@ -52,11 +63,13 @@ export default function TicketPage() {
       )
   }, [])
 
-  const totalTickets = selection.voksen + selection.barn + selection.pensjonist + selection.test
+  const totalTickets =
+    selection.voksne + selection.barn_4_12 + selection.barn_0_3 + selection.bord + selection.test
   const totalPrice =
-    selection.voksen * 350 +
-    selection.barn * 150 +
-    selection.pensjonist * 250 +
+    selection.voksne * 249 +
+    selection.barn_4_12 * 50 +
+    selection.barn_0_3 * 0 +
+    selection.bord * 2241 +
     selection.test * 1
 
   const handleSubmit = async (ev: FormEvent) => {
@@ -75,27 +88,33 @@ export default function TicketPage() {
       setEmailError("Ugyldig e-postadresse")
       return
     }
-    const voksenId = ticketTypeIds["Voksen"]
-    const barnId = ticketTypeIds["Barn"]
-    const pensjonistId = ticketTypeIds["Pensjonist"]
+    const voksneId = ticketTypeIds["Voksne (+12 år)"]
+    const barn412Id = ticketTypeIds["Barn (4-12 år)"]
+    const barn03Id = ticketTypeIds["Barn (0-3 år)"]
+    const bordId = ticketTypeIds["Bestille bord (10 personer)"]
     const testId = ticketTypeIds["Test"]
-    if (!voksenId || !barnId || !pensjonistId || !testId) {
+    if (!voksneId || !barn412Id || !barn03Id || !bordId || !testId) {
       toast.error("Billettyper ikke lastet ennå. Vent litt og prøv igjen.")
       return
     }
     setIsSubmitting(true)
     try {
       const items: { ticket_type_id: string; quantity: number }[] = []
-      if (selection.voksen > 0) items.push({ ticket_type_id: voksenId, quantity: selection.voksen })
-      if (selection.barn > 0) items.push({ ticket_type_id: barnId, quantity: selection.barn })
-      if (selection.pensjonist > 0) items.push({ ticket_type_id: pensjonistId, quantity: selection.pensjonist })
+      if (selection.voksne > 0) items.push({ ticket_type_id: voksneId, quantity: selection.voksne })
+      if (selection.barn_4_12 > 0) items.push({ ticket_type_id: barn412Id, quantity: selection.barn_4_12 })
+      if (selection.barn_0_3 > 0) items.push({ ticket_type_id: barn03Id, quantity: selection.barn_0_3 })
+      if (selection.bord > 0) items.push({ ticket_type_id: bordId, quantity: selection.bord })
       if (selection.test > 0) items.push({ ticket_type_id: testId, quantity: selection.test })
       const res = await fetch(`${API_BASE}/checkout/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items,
-          buyer: { email: trimmed },
+          buyer: {
+            email: trimmed,
+            ...(name.trim() && { name: name.trim() }),
+            ...(phone.trim() && { phone: phone.trim() }),
+          },
         }),
       })
       if (!res.ok) {
@@ -170,6 +189,34 @@ export default function TicketPage() {
             {emailError && (
               <p className="text-sm text-destructive">{emailError}</p>
             )}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="name" className="text-muted-foreground text-xs">
+                  Navn (valgfritt)
+                </Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Ditt navn"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="phone" className="text-muted-foreground text-xs">
+                  Telefon (valgfritt)
+                </Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+47 xxx xx xxx"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  autoComplete="tel"
+                />
+              </div>
+            </div>
           </section>
 
           <Button
