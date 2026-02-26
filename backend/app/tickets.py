@@ -1,28 +1,48 @@
 """
-Genererer QR-koder og sender billett-epost via Resend.
+Genererer QR-koder og sender billett-epost via SMTP eller Resend.
 """
 import io
 import base64
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from datetime import datetime
 import qrcode
-import resend
 from sqlalchemy.orm import Session
 from app.models import Order, Ticket, TicketType, OrderItem, TicketStatus
 from app.config import settings
 
-if settings.RESEND_API_KEY:
-    resend.api_key = settings.RESEND_API_KEY
+log = logging.getLogger(__name__)
+try:
+    import resend
+    if getattr(settings, "RESEND_API_KEY", None):
+        resend.api_key = settings.RESEND_API_KEY
+except Exception:
+    resend = None
 
 
-"""
-To ting: issue_tickets() oppretter Ticket-rader i databasen etter betaling, 
-og send_ticket_email() genererer QR-koder som base64-bilder og 
-sender billett-eposten via Resend til kjøperen.
-
-
-
-"""
+def _email_via_smtp(to: str, subject: str, html: str) -> None:
+    """Sender e-post via SMTP."""
+    if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
+        raise RuntimeError("SMTP_HOST, SMTP_USER og SMTP_PASSWORD må være satt")
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.EMAIL_FROM
+    msg["To"] = to
+    msg.attach(MIMEText(html, "html", "utf-8"))
+    port = getattr(settings, "SMTP_PORT", 587)
+    use_tls = getattr(settings, "SMTP_USE_TLS", True)
+    if port == 465:
+        with smtplib.SMTP_SSL(settings.SMTP_HOST, port) as server:
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.sendmail(settings.EMAIL_FROM, [to], msg.as_string())
+    else:
+        with smtplib.SMTP(settings.SMTP_HOST, port) as server:
+            if use_tls:
+                server.starttls()
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            server.sendmail(settings.EMAIL_FROM, [to], msg.as_string())
 
 
 
@@ -69,11 +89,11 @@ def issue_tickets(order: Order, db: Session) -> list[Ticket]:
 
 
 def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
-    """Sender billett-epost med QR-koder til kjøper."""
-    import logging
-    log = logging.getLogger(__name__)
-    if not settings.RESEND_API_KEY:
-        log.warning("RESEND_API_KEY ikke satt – hopper over e-postutsendelse")
+    """Sender billett-epost med QR-koder. Bruker SMTP hvis satt, ellers Resend."""
+    use_smtp = bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD)
+    use_resend = bool(getattr(settings, "RESEND_API_KEY", None) and resend)
+    if not use_smtp and not use_resend:
+        log.warning("Verken SMTP eller RESEND_API_KEY satt – hopper over e-post")
         return
     # Oppsummering: f.eks. "2× Voksne (+12 år), 1× Barn (4-12 år)"
     order_lines = []
@@ -122,15 +142,19 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     </html>
     """
 
+    subject = "🎟️ Dine billetter – En kveld for Gaza"
     try:
-        resend.Emails.send({
-            "from": settings.EMAIL_FROM,
-            "to": order.buyer_email,
-            "subject": "🎟️ Dine billetter – En kveld for Gaza",
-            "html": html,
-        })
+        if use_smtp:
+            _email_via_smtp(order.buyer_email, subject, html)
+        else:
+            resend.Emails.send({
+                "from": settings.EMAIL_FROM,
+                "to": order.buyer_email,
+                "subject": subject,
+                "html": html,
+            })
         log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id)
         order.ticket_email_sent_at = datetime.utcnow()
         db.commit()
     except Exception as e:
-        log.exception("Resend e-post feilet til %s: %s", order.buyer_email, e) 
+        log.exception("E-post feilet til %s: %s", order.buyer_email, e) 

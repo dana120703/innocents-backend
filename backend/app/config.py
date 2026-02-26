@@ -40,9 +40,14 @@ class Settings(BaseSettings):
     # Webhook
     VIPPS_WEBHOOK_SECRET: str
 
-    # Email (valgfri – e-post sendes ikke før du setter RESEND_API_KEY i Railway)
+    # E-post: bruk SMTP (anbefalt) eller Resend
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_USE_TLS: bool = True
+    EMAIL_FROM: str = "noreply@example.com"
     RESEND_API_KEY: Optional[str] = None
-    EMAIL_FROM: str = "onboarding@resend.dev"
 
     # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str
