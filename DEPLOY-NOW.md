@@ -50,13 +50,9 @@ Frontend må **bygges** med backend-URL, så den kaller riktig server.
 
 I **Railway** → **backend-tjenesten** → **Variables**, sørg for at du har:
 
-- `CORS_ORIGINS` = `["https://innocents.no","http://localhost:3000","https://innocents-backend-production.up.railway.app"]`
+- `CORS_ORIGINS` = `https://innocents.no,https://billetter.innocents.no,http://localhost:3000`
 
-Legg også til frontend-URL-en din (Vercel eller ny Railway-frontend), f.eks.:
-
-- `["https://innocents.no","http://localhost:3000","https://innocents-backend-production.up.railway.app","https://din-frontend.vercel.app"]`
-
-(Erstatt med din faktiske frontend-URL.)
+Produksjons-frontend: **https://billetter.innocents.no**. Backend har dette som default; du trenger bare å sette `FRONTEND_RETURN_URL` = `https://billetter.innocents.no` hvis du overstyrer.
 
 ---
 

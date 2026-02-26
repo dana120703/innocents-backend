@@ -301,7 +301,7 @@ export default function TicketPage() {
             ) : totalTickets > 0 ? (
               <span className="flex items-center justify-center gap-2">
                 <Ticket className="h-5 w-5" />
-                Gå til betaling med Vipps
+                Gå til betaling med Vipps & kort
               </span>
             ) : (
               "Velg antall billetter over"

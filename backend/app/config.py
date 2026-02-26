@@ -21,7 +21,7 @@ def _parse_cors_origins(v):
             return json.loads(v)
         if v:
             return [x.strip() for x in v.split(",")]
-    return ["https://innocents.no"]
+    return ["https://innocents.no", "https://billetter.innocents.no"]
 
 
 class Settings(BaseSettings):
@@ -44,9 +44,12 @@ class Settings(BaseSettings):
 
     # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str
-    FRONTEND_RETURN_URL: str = "https://innocents.no"
+    FRONTEND_RETURN_URL: str = "https://billetter.innocents.no"
     # Leses som streng fra env (kommaseparert), så Railway ikke prøver JSON-parse
-    cors_origins_raw: str = Field(default="https://innocents.no", validation_alias="CORS_ORIGINS")
+    cors_origins_raw: str = Field(
+        default="https://innocents.no,https://billetter.innocents.no",
+        validation_alias="CORS_ORIGINS",
+    )
 
     @property
     def CORS_ORIGINS(self) -> List[str]:

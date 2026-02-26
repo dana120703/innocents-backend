@@ -75,7 +75,7 @@ async def create_checkout_session(
             base = "https://" + base if base else "https://innocents.vercel.app"
     # Vipps tillater ikke lokal URI – bruk produksjons-URL hvis localhost/127.0.0.1
     if "localhost" in base or "127.0.0.1" in base:
-        base = "https://innocents.vercel.app"
+        base = "https://billetter.innocents.no"
     return_url = f"{base}/takk?orderId={order_id}"
 
     # InitiatePaymentSessionRequest: type + reference på toppnivå (API-dokumentasjonen)
