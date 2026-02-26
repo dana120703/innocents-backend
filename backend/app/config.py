@@ -13,14 +13,16 @@ Leser alle miljøvariabler fra .env-filen
 
 
 def _parse_cors_origins(v):
+    """Returnerer liste av CORS-origins. Fjerner avsluttende / slik at Railway sin auto-URL matcher."""
     if isinstance(v, list):
-        return v
+        return [o.rstrip("/") for o in v if o]
     if isinstance(v, str):
         v = v.strip()
         if v.startswith("["):
-            return json.loads(v)
+            parsed = json.loads(v)
+            return [o.rstrip("/") for o in parsed if o]
         if v:
-            return [x.strip() for x in v.split(",")]
+            return [x.strip().rstrip("/") for x in v.split(",") if x.strip()]
     return ["https://innocents.no", "https://billetter.innocents.no"]
 
 
