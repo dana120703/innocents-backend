@@ -43,6 +43,16 @@ app.include_router(main_router)
 app.include_router(webhook_router)
 
 
+@app.get("/")
+def root():
+    """Rot-URL: vis at API-et kjører. Bruk /health for sjekk."""
+    return {
+        "message": "Innocents Tickets API",
+        "health": "/health",
+        "docs": "/docs",
+    }
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
