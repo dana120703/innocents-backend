@@ -1,6 +1,6 @@
 # Innocents Tickets API – En kveld for Gaza
 
-FastAPI backend med Vipps Checkout (produksjon), Postgres, QR-billetter og Resend e-post.
+FastAPI backend med Vipps Checkout (produksjon), Postgres, QR-billetter og SMTP e-post.
 
 ## Lokal kjøring (Mac)
 

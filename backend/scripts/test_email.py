@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 """
-Test at e-post (SMTP eller Resend) fungerer før prod.
+Test at SMTP-epost fungerer før prod.
 
 Kjør fra backend-mappen:
   python3 scripts/test_email.py din@epost.no
 
-Krever i .env (SMTP):
-  SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM
-eller (Resend):
-  RESEND_API_KEY, EMAIL_FROM
+Krever i .env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM
 """
 import os
 import sys
 
-# Last .env før vi importerer app
 def _load_dotenv():
     try:
         from dotenv import load_dotenv
@@ -68,30 +64,6 @@ def send_test_smtp(to: str) -> None:
     print("SMTP: Test-epost sendt til", to)
 
 
-def send_test_resend(to: str) -> None:
-    import resend
-    api_key = os.environ.get("RESEND_API_KEY")
-    from_addr = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
-    if not api_key:
-        print("Mangler RESEND_API_KEY i .env")
-        sys.exit(1)
-    resend.api_key = api_key
-    html = """
-    <html><body style="font-family: sans-serif;">
-    <h2>Test-epost</h2>
-    <p>Dette er en test fra Innocents billettsystem.</p>
-    <p>Hvis du ser denne e-posten, er Resend konfigurert riktig.</p>
-    </body></html>
-    """
-    resend.Emails.send({
-        "from": from_addr,
-        "to": to,
-        "subject": "Test-epost – Innocents billettsystem",
-        "html": html,
-    })
-    print("Resend: Test-epost sendt til", to)
-
-
 def main():
     if len(sys.argv) < 2:
         print("Bruk: python3 scripts/test_email.py <epostadresse>")
@@ -102,31 +74,14 @@ def main():
         print("Ugyldig e-postadresse")
         sys.exit(1)
 
-    smtp_ok = all([
-        os.environ.get("SMTP_HOST"),
-        os.environ.get("SMTP_USER"),
-        os.environ.get("SMTP_PASSWORD"),
-    ])
-    resend_ok = bool(os.environ.get("RESEND_API_KEY"))
+    if not all([os.environ.get("SMTP_HOST"), os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASSWORD")]):
+        print("Sett SMTP_HOST, SMTP_USER og SMTP_PASSWORD i .env")
+        sys.exit(1)
 
-    if smtp_ok:
-        try:
-            send_test_smtp(to)
-            return
-        except Exception as e:
-            print("SMTP feilet:", e)
-            if resend_ok:
-                print("Prøver Resend i stedet...")
-            else:
-                sys.exit(1)
-    if resend_ok:
-        try:
-            send_test_resend(to)
-        except Exception as e:
-            print("Resend feilet:", e)
-            sys.exit(1)
-    else:
-        print("Sett enten SMTP (SMTP_HOST, SMTP_USER, SMTP_PASSWORD) eller RESEND_API_KEY i .env")
+    try:
+        send_test_smtp(to)
+    except Exception as e:
+        print("SMTP feilet:", e)
         sys.exit(1)
 
 

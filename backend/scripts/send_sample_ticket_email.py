@@ -6,7 +6,7 @@ så du kan se hvordan billettene og QR-kodene ser ut.
 Kjør fra backend-mappen:
   python3 scripts/send_sample_ticket_email.py din@epost.no
 
-Krever SMTP_* eller RESEND i .env (samme som prod).
+Krever SMTP_* i .env (samme som prod).
 """
 import sys
 import os

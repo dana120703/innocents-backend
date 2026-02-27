@@ -1,5 +1,5 @@
 """
-Genererer QR-koder og sender billett-epost via SMTP eller Resend.
+Genererer QR-koder og sender billett-epost via SMTP.
 """
 import io
 import base64
@@ -15,12 +15,6 @@ from app.models import Order, Ticket, TicketType, OrderItem, TicketStatus
 from app.config import settings
 
 log = logging.getLogger(__name__)
-try:
-    import resend
-    if getattr(settings, "RESEND_API_KEY", None):
-        resend.api_key = settings.RESEND_API_KEY
-except Exception:
-    resend = None
 
 
 def _email_via_smtp(to: str, subject: str, html: str, cid_images: list[tuple[str, bytes]] | None = None) -> None:
@@ -53,7 +47,6 @@ def _email_via_smtp(to: str, subject: str, html: str, cid_images: list[tuple[str
                 server.starttls()
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             server.sendmail(settings.EMAIL_FROM, [to], msg.as_string())
-
 
 
 def generate_qr_base64(token: str) -> str:
@@ -103,15 +96,17 @@ def issue_tickets(order: Order, db: Session) -> list[Ticket]:
 
 
 def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
-    """Sender billett-epost med QR-koder. Bruker SMTP hvis satt, ellers Resend."""
-    use_smtp = bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD)
-    use_resend = bool(getattr(settings, "RESEND_API_KEY", None) and resend)
-    if not use_smtp and not use_resend:
-        log.warning("INGEN E-POST SENDT: Verken SMTP eller RESEND_API_KEY er satt i miljøvariabler (sjekk Railway)")
+    """Sender billett-epost med QR-koder via SMTP."""
+    if not (settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD):
+        log.warning(
+            "INGEN E-POST SENDT: SMTP_HOST, SMTP_USER og SMTP_PASSWORD må være satt. "
+            "Sett disse og EMAIL_FROM i Railway Variables."
+        )
         return
     if not (order.buyer_email or "").strip():
-        log.warning("INGEN E-POST SENDT: Ordre %s mangler buyer_email", order.id)
+        log.warning("INGEN E-POST SENDT: Ordre %s mangler buyer_email i databasen", order.id)
         return
+    log.info("Sender billett-epost til %s for ordre %s (SMTP)", order.buyer_email, order.id)
     # Oppsummering: f.eks. "2× Voksne (+12 år), 1× Barn (4-12 år)"
     order_lines = []
     for item in order.items:
@@ -120,22 +115,18 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
         order_lines.append(f"{item.quantity}× {name}")
     order_summary = ", ".join(order_lines) if order_lines else f"{len(tickets)} billett(er)"
 
-    # SMTP: bruk cid-vedlegg slik at Gmail/Outlook viser QR. Resend: bruk data-URI.
     cid_images: list[tuple[str, bytes]] = []
     ticket_blocks = ""
     for i, ticket in enumerate(tickets, 1):
         tt = db.query(TicketType).filter(TicketType.id == ticket.ticket_type_id).first()
-        if use_smtp:
-            cid = f"qr{i}"
-            cid_images.append((cid, generate_qr_png_bytes(ticket.qr_token)))
-            img_src = f"cid:{cid}"
-        else:
-            img_src = f"data:image/png;base64,{generate_qr_base64(ticket.qr_token)}"
+        name = tt.name if tt else "Billett"
+        cid = f"qr{i}"
+        cid_images.append((cid, generate_qr_png_bytes(ticket.qr_token)))
         ticket_blocks += f"""
         <div style="margin: 24px 0; padding: 24px; border: 1px solid #e5e5e5; border-radius: 8px; text-align: center;">
             <p style="font-size: 14px; color: #666; margin: 0 0 8px 0;">Billett {i} av {len(tickets)}</p>
-            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">{tt.name if tt else "Billett"}</p>
-            <img src="{img_src}" alt="QR-kode" style="width: 200px; height: 200px;" />
+            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">{name}</p>
+            <img src="cid:{cid}" alt="QR-kode" style="width: 200px; height: 200px;" />
             <p style="font-size: 12px; color: #999; margin: 12px 0 0 0;">Token: {ticket.qr_token}</p>
         </div>
         """
@@ -165,18 +156,9 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     </body>
     </html>
     """
-
     subject = "🎟️ Dine billetter – En kveld for Gaza"
     try:
-        if use_smtp:
-            _email_via_smtp(order.buyer_email, subject, html, cid_images=cid_images)
-        else:
-            resend.Emails.send({
-                "from": settings.EMAIL_FROM,
-                "to": order.buyer_email,
-                "subject": subject,
-                "html": html,
-            })
+        _email_via_smtp(order.buyer_email, subject, html, cid_images=cid_images)
         log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id)
         order.ticket_email_sent_at = datetime.utcnow()
         db.commit()
@@ -185,11 +167,9 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
 
 
 def send_confirmation_email(order: Order, db: Session):
-    """Sender kort bekreftelsesmail: «Din ordre er betalt og registrert.» Kalles ved PAID (billetter sendt allerede ved PENDING)."""
-    use_smtp = bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD)
-    use_resend = bool(getattr(settings, "RESEND_API_KEY", None) and resend)
-    if not use_smtp and not use_resend:
-        log.warning("Verken SMTP eller RESEND_API_KEY satt – hopper over bekreftelsesmail")
+    """Sender kort bekreftelsesmail via SMTP: «Din ordre er betalt og registrert.»"""
+    if not (settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD):
+        log.warning("SMTP ikke satt – hopper over bekreftelsesmail")
         return
     if not order.buyer_email:
         log.warning("Ingen e-post for ordre %s – hopper over bekreftelsesmail", order.id)
@@ -216,15 +196,7 @@ def send_confirmation_email(order: Order, db: Session):
     """
     subject = "✅ Ordre betalt og registrert – En kveld for Gaza"
     try:
-        if use_smtp:
-            _email_via_smtp(order.buyer_email, subject, html)
-        else:
-            resend.Emails.send({
-                "from": settings.EMAIL_FROM,
-                "to": order.buyer_email,
-                "subject": subject,
-                "html": html,
-            })
+        _email_via_smtp(order.buyer_email, subject, html)
         log.info("Bekreftelsesmail sendt til %s for ordre %s", order.buyer_email, order.id)
     except Exception as e:
         log.exception("Bekreftelsesmail feilet til %s: %s", order.buyer_email, e)

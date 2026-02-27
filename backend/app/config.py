@@ -7,7 +7,7 @@ import json
 """
 
 Leser alle miljøvariabler fra .env-filen 
-(Vipps-nøkler, database-URL, Resend API-nøkkel osv.).
+(Vipps-nøkler, database-URL, e-post SMTP osv.).
  Alt som er hemmelig eller miljø-spesifikt samles her — ingen hardkodede verdier i resten av koden.
 """
 
@@ -40,14 +40,13 @@ class Settings(BaseSettings):
     # Webhook
     VIPPS_WEBHOOK_SECRET: str
 
-    # E-post: bruk SMTP (anbefalt) eller Resend
+    # E-post: kun SMTP
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
     SMTP_USE_TLS: bool = True
     EMAIL_FROM: str = "noreply@example.com"
-    RESEND_API_KEY: Optional[str] = None
 
     # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str

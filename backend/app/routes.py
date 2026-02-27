@@ -1,10 +1,11 @@
 import logging
+import threading
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
 
-from app.db import get_db
+from app.db import get_db, SessionLocal
 from app.models import Order, OrderItem, Ticket, TicketType, OrderStatus, TicketStatus
 from app.schemas import (
     CreateCheckoutRequest,
@@ -16,6 +17,26 @@ from app.schemas import (
 )
 from app.Vipps import create_checkout_session, get_session_status, parse_buyer_from_session
 from app.tickets import issue_tickets, send_ticket_email, send_confirmation_email
+
+
+def _send_ticket_email_thread(order_id: str) -> None:
+    """Kjøres i egen tråd med egen DB-sesjon. Sender billett-epost hvis ordre er PAID og ikke sendt."""
+    db = SessionLocal()
+    try:
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if not order or order.status != OrderStatus.PAID or order.ticket_email_sent_at:
+            return
+        tickets = list(order.tickets) if order.tickets else []
+        if not tickets:
+            tickets = issue_tickets(order, db)
+        if tickets:
+            send_ticket_email(order, tickets, db)
+            db.refresh(order)
+            logging.getLogger(__name__).info("Tråd: billett-epost sendt for ordre %s, ticket_email_sent_at=%s", order_id, order.ticket_email_sent_at)
+    except Exception as e:
+        logging.getLogger(__name__).exception("Tråd: billett-epost feilet for ordre %s: %s", order_id, e)
+    finally:
+        db.close()
 
 
 router = APIRouter()
@@ -151,10 +172,21 @@ def _order_to_response(order: Order) -> OrderResponse:
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
 def get_order(order_id: str, db: Session = Depends(get_db)):
-    """Hent ordre fra databasen – kun lesing, rask respons. Bruk POST /orders/{id}/confirm for å sette PAID og sende e-post."""
+    """Hent ordre fra DB. Hvis CREATED/PENDING settes PAID; e-post sendes i tråd så respons er rask."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
+
+    if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
+        order.status = OrderStatus.PAID
+        order.paid_at = order.paid_at or datetime.utcnow()
+        db.commit()
+        db.refresh(order)
+        issue_tickets(order, db)
+        threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
+    elif order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
+        threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
+
     return _order_to_response(order)
 
 
