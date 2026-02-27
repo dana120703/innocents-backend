@@ -1,10 +1,10 @@
 import logging
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
 
-from app.db import get_db, SessionLocal
+from app.db import get_db
 from app.models import Order, OrderItem, Ticket, TicketType, OrderStatus, TicketStatus
 from app.schemas import (
     CreateCheckoutRequest,
@@ -16,27 +16,6 @@ from app.schemas import (
 )
 from app.Vipps import create_checkout_session, get_session_status, parse_buyer_from_session
 from app.tickets import issue_tickets, send_ticket_email, send_confirmation_email
-
-
-def _send_ticket_email_background(order_id: str) -> None:
-    """Kjøres i bakgrunn: sender billett-epost hvis ordre er PAID og ikke allerede sendt. Kommuniserer kun med DB."""
-    db = SessionLocal()
-    try:
-        order = db.query(Order).filter(Order.id == order_id).first()
-        if not order or order.status != OrderStatus.PAID:
-            return
-        if order.ticket_email_sent_at:
-            return
-        tickets = list(order.tickets) if order.tickets else []
-        if not tickets:
-            tickets = issue_tickets(order, db)
-        if tickets:
-            send_ticket_email(order, tickets, db)
-            logging.getLogger(__name__).info("Bakgrunn: billett-epost sendt for ordre %s", order_id)
-    except Exception as e:
-        logging.getLogger(__name__).exception("Bakgrunn: billett-epost feilet for ordre %s: %s", order_id, e)
-    finally:
-        db.close()
 
 
 router = APIRouter()
@@ -171,22 +150,37 @@ def _order_to_response(order: Order) -> OrderResponse:
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
-async def get_order(order_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def get_order(order_id: str, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
-    # Svar raskt fra databasen. Hvis status er PAID (eller vi setter den nå), trigger e-post i bakgrunn.
+    # Hvis PAID (eller vi setter det nå): send billett-epost her i forespørselen (Railway avslutter bakgrunnsoppgaver for tidlig).
     if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
         order.status = OrderStatus.PAID
         order.paid_at = order.paid_at or datetime.utcnow()
         db.commit()
         db.refresh(order)
-        issue_tickets(order, db)
-        background_tasks.add_task(_send_ticket_email_background, order_id)
+        tickets = issue_tickets(order, db)
+        if not order.ticket_email_sent_at:
+            try:
+                send_ticket_email(order, tickets, db)
+                db.refresh(order)
+                logging.getLogger(__name__).info("Takk-siden: billett-epost sendt for ordre %s", order_id)
+            except Exception as e:
+                logging.getLogger(__name__).exception("Billett-epost feilet for ordre %s: %s", order_id, e)
 
     elif order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
-        background_tasks.add_task(_send_ticket_email_background, order_id)
+        tickets = list(order.tickets) if order.tickets else []
+        if not tickets:
+            tickets = issue_tickets(order, db)
+        if tickets:
+            try:
+                send_ticket_email(order, tickets, db)
+                db.refresh(order)
+                logging.getLogger(__name__).info("Takk-siden: billett-epost sendt (etterfyll) for ordre %s", order_id)
+            except Exception as e:
+                logging.getLogger(__name__).exception("Billett-epost feilet for ordre %s: %s", order_id, e)
 
     return _order_to_response(order)
 
