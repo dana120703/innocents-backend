@@ -8,7 +8,6 @@ export interface TicketSelection {
   barn_4_12: number
   barn_0_3: number
   bord: number
-  test: number
 }
 
 const tickets = [
@@ -35,12 +34,6 @@ const tickets = [
     label: "Bestille bord (10 personer)",
     age: "Bord for 10",
     price: 2241,
-  },
-  {
-    id: "test" as const,
-    label: "Test",
-    age: "Testbillett 1 kr",
-    price: 1,
   },
 ]
 

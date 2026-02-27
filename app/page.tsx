@@ -28,7 +28,6 @@ export default function TicketPage() {
     barn_4_12: 0,
     barn_0_3: 0,
     bord: 0,
-    test: 0,
   })
   const [email, setEmail] = useState("")
   const [name, setName] = useState("")
@@ -53,7 +52,6 @@ export default function TicketPage() {
               "Barn (4-12 år)",
               "Barn (0-3 år)",
               "Bestille bord (10 personer)",
-              "Test",
             ].includes(t.name)
           ) {
             map[t.name] = t.id
@@ -67,13 +65,12 @@ export default function TicketPage() {
   }, [])
 
   const totalTickets =
-    selection.voksne + selection.barn_4_12 + selection.barn_0_3 + selection.bord + selection.test
+    selection.voksne + selection.barn_4_12 + selection.barn_0_3 + selection.bord
   const totalPrice =
     selection.voksne * 249 +
     selection.barn_4_12 * 50 +
     selection.barn_0_3 * 0 +
-    selection.bord * 2241 +
-    selection.test * 1
+    selection.bord * 2241
 
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault()
@@ -107,8 +104,7 @@ export default function TicketPage() {
     const barn412Id = ticketTypeIds["Barn (4-12 år)"]
     const barn03Id = ticketTypeIds["Barn (0-3 år)"]
     const bordId = ticketTypeIds["Bestille bord (10 personer)"]
-    const testId = ticketTypeIds["Test"]
-    if (!voksneId || !barn412Id || !barn03Id || !bordId || !testId) {
+    if (!voksneId || !barn412Id || !barn03Id || !bordId) {
       toast.error("Billettyper ikke lastet ennå. Vent litt og prøv igjen.")
       return
     }
@@ -119,7 +115,6 @@ export default function TicketPage() {
       if (selection.barn_4_12 > 0) items.push({ ticket_type_id: barn412Id, quantity: selection.barn_4_12 })
       if (selection.barn_0_3 > 0) items.push({ ticket_type_id: barn03Id, quantity: selection.barn_0_3 })
       if (selection.bord > 0) items.push({ ticket_type_id: bordId, quantity: selection.bord })
-      if (selection.test > 0) items.push({ ticket_type_id: testId, quantity: selection.test })
       const res = await fetch(`${API_BASE}/checkout/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -184,7 +179,7 @@ export default function TicketPage() {
             En kveld for Gaza
           </h1>
           <p className="mt-2 text-base text-muted-foreground md:text-lg">
-            Velg billetter under. Du betaler sikkert med Vipps og får billettene på e-post.
+            Velg billetter under. Du betaler sikkert med Vipps eller kort og får billettene på e-post.
           </p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">✓ Vipps</span>
