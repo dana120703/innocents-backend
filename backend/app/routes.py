@@ -150,12 +150,21 @@ def _order_to_response(order: Order) -> OrderResponse:
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
-async def get_order(order_id: str, db: Session = Depends(get_db)):
+def get_order(order_id: str, db: Session = Depends(get_db)):
+    """Hent ordre fra databasen – kun lesing, rask respons. Bruk POST /orders/{id}/confirm for å sette PAID og sende e-post."""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Ordre ikke funnet")
+    return _order_to_response(order)
+
+
+@router.post("/orders/{order_id}/confirm")
+def confirm_order_and_send_email(order_id: str, db: Session = Depends(get_db)):
+    """Sett ordre til PAID og send billett-epost. Kalles i bakgrunn fra takk-siden – kan ta noen sekunder (SMTP)."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
-    # Hvis PAID (eller vi setter det nå): send billett-epost her i forespørselen (Railway avslutter bakgrunnsoppgaver for tidlig).
     if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
         order.status = OrderStatus.PAID
         order.paid_at = order.paid_at or datetime.utcnow()
@@ -166,7 +175,7 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
             try:
                 send_ticket_email(order, tickets, db)
                 db.refresh(order)
-                logging.getLogger(__name__).info("Takk-siden: billett-epost sendt for ordre %s", order_id)
+                logging.getLogger(__name__).info("Confirm: billett-epost sendt for ordre %s", order_id)
             except Exception as e:
                 logging.getLogger(__name__).exception("Billett-epost feilet for ordre %s: %s", order_id, e)
 
@@ -178,11 +187,11 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
             try:
                 send_ticket_email(order, tickets, db)
                 db.refresh(order)
-                logging.getLogger(__name__).info("Takk-siden: billett-epost sendt (etterfyll) for ordre %s", order_id)
+                logging.getLogger(__name__).info("Confirm: billett-epost sendt (etterfyll) for ordre %s", order_id)
             except Exception as e:
                 logging.getLogger(__name__).exception("Billett-epost feilet for ordre %s: %s", order_id, e)
 
-    return _order_to_response(order)
+    return {"ok": True, "status": order.status.value}
 
 
 # ─── Ticket scanning (inn i lokalet) ─────────────────────────────────────────

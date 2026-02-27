@@ -69,7 +69,7 @@ export function TakkContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Én henting med timeout – slik at vi ikke spinner evigt hvis backend/CORS henger.
+  // GET /orders/{id} leser kun fra DB – rask. Vi viser ordren med én gang. Confirm (PAID + e-post) trigges i bakgrunn.
   useEffect(() => {
     if (!orderId) {
       setLoading(false)
@@ -77,15 +77,16 @@ export function TakkContent() {
     }
 
     const apiBase = getApiBase()
-    const url = apiBase ? `${apiBase}/orders/${orderId}` : `/orders/${orderId}`
+    const orderUrl = apiBase ? `${apiBase}/orders/${orderId}` : `/orders/${orderId}`
+    const confirmUrl = apiBase ? `${apiBase}/orders/${orderId}/confirm` : `/orders/${orderId}/confirm`
     let cancelled = false
-    const timeoutMs = 20000
+    const timeoutMs = 15000
 
     const fetchOrder = async () => {
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-        const res = await fetch(url, { signal: controller.signal })
+        const res = await fetch(orderUrl, { signal: controller.signal })
         clearTimeout(timeoutId)
         if (!res.ok) {
           if (res.status === 404) setError("Ordre ikke funnet.")
@@ -97,15 +98,15 @@ export function TakkContent() {
           setOrder(data)
           setLoading(false)
         }
+        if (data) {
+          fetch(confirmUrl, { method: "POST" }).catch(() => {})
+        }
         return data
       } catch (err) {
         if (cancelled) return null
-        if (err instanceof Error && err.name === "AbortError") {
-          setError("Forespørselen tok for lang tid. Sjekk e-posten din for billetter – ordren er registrert.")
-        } else {
-          setError("Kunne ikke koble til server. Sjekk at du har internett.")
-        }
+        setError("Kunne ikke koble til server. Ordren er registrert – sjekk e-posten din for billetter.")
         setLoading(false)
+        fetch(confirmUrl, { method: "POST" }).catch(() => {})
         return null
       }
     }
