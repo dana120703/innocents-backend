@@ -148,7 +148,7 @@ async def get_session_status(order_id: str) -> dict:
 
 # Verdier fra Vipps som betyr betalt / kansellert / utløpt (sessionState eller state)
 SESSION_STATE_PAID = {"Captured", "CAPTURED", "PaymentCaptured", "PaymentAuthorized", "AUTHORIZED", "Reserved"}
-SESSION_STATE_CANCELLED = {"Cancelled", "CANCELLED", "PaymentCancelled", "PaymentAborted", "ABORTED", "SessionTerminated", "TERMINATED"}
+SESSION_STATE_CANCELLED = {"Cancelled", "CANCELLED", "PaymentCancelled", "PaymentAborted", "PaymentTerminated", "ABORTED", "SessionTerminated", "TERMINATED", "Terminated"}
 SESSION_STATE_EXPIRED = {"Expired", "EXPIRED", "PaymentExpired"}
 
 

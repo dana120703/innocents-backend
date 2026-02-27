@@ -38,8 +38,8 @@ sjekker mot ProcessedWebhook for å unngå dobbeltbehandling, og kaller issue_ti
 
 # Vipps events som betyr "betalt" (name/event + sessionState-format)
 PAID_EVENTS = {"PaymentCaptured", "PaymentAuthorized", "CAPTURED", "AUTHORIZED", "Captured"}
-# Vipps events som betyr "mislyktes"
-FAILED_EVENTS = {"PaymentAborted", "PaymentExpired", "PaymentCancelled", "SessionTerminated", "ABORTED", "EXPIRED", "TERMINATED", "CANCELLED", "Cancelled", "Expired"}
+# Vipps events som betyr "mislyktes" (kansellert/avbrutt/utløpt)
+FAILED_EVENTS = {"PaymentAborted", "PaymentExpired", "PaymentCancelled", "PaymentTerminated", "SessionTerminated", "ABORTED", "EXPIRED", "TERMINATED", "CANCELLED", "Cancelled", "Expired", "Terminated"}
 
 
 @router.post("/webhooks/vipps")
@@ -134,13 +134,15 @@ async def vipps_webhook(
         status_map = {
             "PaymentAborted": OrderStatus.CANCELLED,
             "PaymentCancelled": OrderStatus.CANCELLED,
+            "PaymentTerminated": OrderStatus.CANCELLED,
             "Aborted": OrderStatus.CANCELLED,
             "ABORTED": OrderStatus.CANCELLED,
             "PaymentExpired": OrderStatus.EXPIRED,
             "Expired": OrderStatus.EXPIRED,
             "EXPIRED": OrderStatus.EXPIRED,
-            "SessionTerminated": OrderStatus.EXPIRED,
-            "TERMINATED": OrderStatus.EXPIRED,
+            "SessionTerminated": OrderStatus.CANCELLED,
+            "TERMINATED": OrderStatus.CANCELLED,
+            "Terminated": OrderStatus.CANCELLED,
             "CANCELLED": OrderStatus.CANCELLED,
         }
         order.status = status_map.get(event_name, OrderStatus.FAILED)
