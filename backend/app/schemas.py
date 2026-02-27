@@ -60,6 +60,7 @@ class OrderResponse(BaseModel):
     buyer_phone: str | None = None
     total_quantity: int = 0
     items: List[OrderItemResponse] = []  # f.eks. [{ ticket_type_name: "Voksne (+12 år)", quantity: 2 }, ...]
+    ticket_email_sent_at: datetime | None = None  # satt når billett-e-post er sendt (PAID + e-post OK)
 
 
 # --- Tickets ---

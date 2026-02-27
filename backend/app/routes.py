@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -143,6 +144,7 @@ def _order_to_response(order: Order) -> OrderResponse:
         buyer_phone=order.buyer_phone,
         total_quantity=total_qty,
         items=items,
+        ticket_email_sent_at=order.ticket_email_sent_at,
     )
 
 
@@ -152,15 +154,19 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
-    # Ved PENDING: hent status fra Vipps (fallback hvis webhook ikke kom)
+    # Ved PENDING: hent status fra Vipps (kunden kommer til takk-siden – synk betaling og send e-post)
     if order.status == OrderStatus.PENDING:
         try:
             session = await get_session_status(order_id)
             state = (session.get("sessionState") or "").strip()
             payment = session.get("paymentDetails") or {}
             pay_state = (payment.get("state") or "").strip().upper()
-            if state == "PaymentSuccessful" or pay_state in ("AUTHORISED", "CAPTURED"):
-                # Oppdater kjøperinfo fra Vipps hvis tilgjengelig
+            # Vipps: PaymentSuccessful / AUTHORISED / CAPTURED = betalt
+            is_paid = (
+                state.upper() == "PAYMENTSUCCESSFUL"
+                or pay_state in ("AUTHORISED", "AUTHORIZED", "CAPTURED")
+            )
+            if is_paid:
                 buyer = parse_buyer_from_session(session)
                 if buyer.get("name"):
                     order.buyer_name = buyer["name"]
@@ -175,15 +181,35 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
                 try:
                     tickets = issue_tickets(order, db)
                     send_ticket_email(order, tickets, db)
+                    db.refresh(order)
+                    logging.getLogger(__name__).info(
+                        "Takk-siden: ordre %s satt til PAID, billetter utstedt, e-post sendt",
+                        order_id,
+                    )
                 except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).exception("E-post ved synk feilet: %s", e)
-        except Exception:
-            pass
+                    logging.getLogger(__name__).exception(
+                        "E-post ved synk på takk-siden feilet for ordre %s: %s",
+                        order_id,
+                        e,
+                    )
+            else:
+                logging.getLogger(__name__).debug(
+                    "Ordre %s fortsatt ikke betalt i Vipps: sessionState=%r paymentDetails.state=%r",
+                    order_id,
+                    state,
+                    payment.get("state"),
+                )
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "Kunne ikke hente Vipps-status for ordre %s (takk-siden): %s",
+                order_id,
+                e,
+            )
 
-    # PAID men mangler kjøperinfo (Vipps returnerer ofte kun userInfo når sessionState er PaymentInitiated)?
-    # Prøv å hente fra Vipps når bruker åpner takk-siden – noen ganger er data fortsatt tilgjengelig.
-    if order.status == OrderStatus.PAID and (not order.buyer_email or order.buyer_name in (None, "Vipps-kunde")):
+    # PAID men mangler kjøperinfo – hent fra Vipps når bruker åpner takk-siden
+    if order.status == OrderStatus.PAID and (
+        not order.buyer_email or order.buyer_name in (None, "Vipps-kunde")
+    ):
         try:
             session = await get_session_status(order_id)
             buyer = parse_buyer_from_session(session)
@@ -203,15 +229,23 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
         except Exception:
             pass
 
-    # Ordre allerede PAID men e-post ikke sendt (f.eks. webhook feilet): send når de åpner takk-siden
+    # PAID men e-post ikke sendt (webhook feilet eller sen synk): utsted billetter + send e-post nå
     if order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
         tickets = list(order.tickets) if order.tickets else []
+        if not tickets:
+            tickets = issue_tickets(order, db)
         if tickets:
             try:
                 send_ticket_email(order, tickets, db)
+                db.refresh(order)
+                logging.getLogger(__name__).info(
+                    "Takk-siden: e-post sendt for ordre %s (etterfyll)",
+                    order_id,
+                )
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).exception("E-post ved takk-side feilet: %s", e)
+                logging.getLogger(__name__).exception(
+                    "E-post ved takk-side feilet for ordre %s: %s", order_id, e
+                )
 
     return _order_to_response(order)
 
