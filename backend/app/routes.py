@@ -154,56 +154,38 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
-    # Ved PENDING: hent status fra Vipps (kunden kommer til takk-siden – synk betaling og send e-post)
+    # Ved PENDING: kunden har kommet til takk-siden (redirect fra Vipps) – ikke vent på capture/reservasjon.
+    # Vi stoler på at de fullførte flyten; betaling kan være reservert og capture komme 1–2 dager senere.
+    # Sett PAID med én gang, utsted billetter og send e-post.
     if order.status == OrderStatus.PENDING:
         try:
             session = await get_session_status(order_id)
-            state = (session.get("sessionState") or "").strip()
-            payment = session.get("paymentDetails") or {}
-            pay_state = (payment.get("state") or "").strip().upper()
-            # Vipps: PaymentSuccessful / AUTHORISED / CAPTURED = betalt
-            is_paid = (
-                state.upper() == "PAYMENTSUCCESSFUL"
-                or pay_state in ("AUTHORISED", "AUTHORIZED", "CAPTURED")
-            )
-            if is_paid:
-                buyer = parse_buyer_from_session(session)
-                if buyer.get("name"):
-                    order.buyer_name = buyer["name"]
-                if buyer.get("email"):
-                    order.buyer_email = buyer["email"]
-                if buyer.get("phone"):
-                    order.buyer_phone = buyer["phone"]
-                order.status = OrderStatus.PAID
-                order.paid_at = order.paid_at or datetime.utcnow()
-                db.commit()
-                db.refresh(order)
-                try:
-                    tickets = issue_tickets(order, db)
-                    send_ticket_email(order, tickets, db)
-                    db.refresh(order)
-                    logging.getLogger(__name__).info(
-                        "Takk-siden: ordre %s satt til PAID, billetter utstedt, e-post sendt",
-                        order_id,
-                    )
-                except Exception as e:
-                    logging.getLogger(__name__).exception(
-                        "E-post ved synk på takk-siden feilet for ordre %s: %s",
-                        order_id,
-                        e,
-                    )
-            else:
-                logging.getLogger(__name__).debug(
-                    "Ordre %s fortsatt ikke betalt i Vipps: sessionState=%r paymentDetails.state=%r",
-                    order_id,
-                    state,
-                    payment.get("state"),
-                )
+            buyer = parse_buyer_from_session(session)
+            if buyer.get("name"):
+                order.buyer_name = buyer["name"]
+            if buyer.get("email"):
+                order.buyer_email = buyer["email"]
+            if buyer.get("phone"):
+                order.buyer_phone = buyer["phone"]
         except Exception as e:
-            logging.getLogger(__name__).warning(
-                "Kunne ikke hente Vipps-status for ordre %s (takk-siden): %s",
+            logging.getLogger(__name__).debug(
+                "Kunne ikke hente kjøperinfo fra Vipps for ordre %s: %s", order_id, e
+            )
+        order.status = OrderStatus.PAID
+        order.paid_at = order.paid_at or datetime.utcnow()
+        db.commit()
+        db.refresh(order)
+        try:
+            tickets = issue_tickets(order, db)
+            send_ticket_email(order, tickets, db)
+            db.refresh(order)
+            logging.getLogger(__name__).info(
+                "Takk-siden: ordre %s satt til PAID, billetter utstedt, e-post sendt (uavhengig av Vipps capture)",
                 order_id,
-                e,
+            )
+        except Exception as e:
+            logging.getLogger(__name__).exception(
+                "E-post ved takk-siden feilet for ordre %s: %s", order_id, e
             )
 
     # PAID men mangler kjøperinfo – hent fra Vipps når bruker åpner takk-siden
