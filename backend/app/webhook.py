@@ -37,7 +37,7 @@ sjekker mot ProcessedWebhook for å unngå dobbeltbehandling, og kaller issue_ti
 """
 
 # Vipps events som betyr "betalt" (name/event + sessionState-format)
-PAID_EVENTS = {"PaymentCaptured", "PaymentAuthorized", "CAPTURED", "AUTHORIZED", "Captured"}
+PAID_EVENTS = {"PaymentCaptured", "PaymentAuthorized", "PaymentSuccessful", "CAPTURED", "AUTHORIZED", "Captured", "Successful"}
 # Vipps events som betyr "mislyktes" (kansellert/avbrutt/utløpt)
 FAILED_EVENTS = {"PaymentAborted", "PaymentExpired", "PaymentCancelled", "PaymentTerminated", "SessionTerminated", "ABORTED", "EXPIRED", "TERMINATED", "CANCELLED", "Cancelled", "Expired", "Terminated"}
 
