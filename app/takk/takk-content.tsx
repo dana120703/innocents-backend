@@ -69,7 +69,7 @@ export function TakkContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Én henting: backend setter ordre til PAID når takk-siden lastes – vi er ikke avhengig av Vipps.
+  // Én henting med timeout – slik at vi ikke spinner evigt hvis backend/CORS henger.
   useEffect(() => {
     if (!orderId) {
       setLoading(false)
@@ -79,10 +79,14 @@ export function TakkContent() {
     const apiBase = getApiBase()
     const url = apiBase ? `${apiBase}/orders/${orderId}` : `/orders/${orderId}`
     let cancelled = false
+    const timeoutMs = 20000
 
     const fetchOrder = async () => {
       try {
-        const res = await fetch(url)
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+        const res = await fetch(url, { signal: controller.signal })
+        clearTimeout(timeoutId)
         if (!res.ok) {
           if (res.status === 404) setError("Ordre ikke funnet.")
           else setError("Kunne ikke hente ordrestatus.")
@@ -91,12 +95,16 @@ export function TakkContent() {
         const data = await res.json()
         if (!cancelled) {
           setOrder(data)
-          // Backend returnerer PAID når vi henter med orderId; vis alltid suksess ved gyldig ordre
           setLoading(false)
         }
         return data
-      } catch {
-        if (!cancelled) setError("Kunne ikke koble til server.")
+      } catch (err) {
+        if (cancelled) return null
+        if (err instanceof Error && err.name === "AbortError") {
+          setError("Forespørselen tok for lang tid. Sjekk e-posten din for billetter – ordren er registrert.")
+        } else {
+          setError("Kunne ikke koble til server. Sjekk at du har internett.")
+        }
         setLoading(false)
         return null
       }

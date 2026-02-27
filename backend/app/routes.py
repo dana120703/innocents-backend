@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -154,11 +155,11 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
-    # VELDIG VIKTIG: Kunden har nådd takk-siden = de har betalt. Her sender de billett-eposten med QR.
-    # CREATED/PENDING → sett PAID, utsted billetter, send billett-epost (kunden får billetten når de når takk-siden).
+    # VELDIG VIKTIG: Kunden har nådd takk-siden = de har betalt. Send billett-epost her (ikke vent på Vipps).
+    # CREATED/PENDING → sett PAID, utsted billetter, send billett-epost.
     if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
         try:
-            session = await get_session_status(order_id)
+            session = await asyncio.wait_for(get_session_status(order_id), timeout=6.0)
             buyer = parse_buyer_from_session(session)
             if buyer.get("name"):
                 order.buyer_name = buyer["name"]
@@ -176,13 +177,11 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
         db.refresh(order)
         tickets = issue_tickets(order, db)
         if not order.ticket_email_sent_at:
-            # VELDIG VIKTIG: Kunden har nådd takk-siden – send billett-epost med QR her (garantert).
             try:
                 send_ticket_email(order, tickets, db)
                 db.refresh(order)
                 logging.getLogger(__name__).info(
-                    "Takk-siden: ordre %s – BILLETT-EPOST SENDT (kunden har nådd takk-siden)",
-                    order_id,
+                    "Takk-siden: ordre %s – BILLETT-EPOST SENDT", order_id,
                 )
             except Exception as e:
                 logging.getLogger(__name__).exception(
@@ -194,12 +193,12 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
             except Exception as e:
                 logging.getLogger(__name__).exception("Bekreftelsesmail feilet: %s", e)
 
-    # PAID men mangler kjøperinfo – hent fra Vipps når bruker åpner takk-siden
+    # PAID men mangler kjøperinfo – hent fra Vipps (kort timeout så takk-siden ikke henger)
     if order.status == OrderStatus.PAID and (
         not order.buyer_email or order.buyer_name in (None, "Vipps-kunde")
     ):
         try:
-            session = await get_session_status(order_id)
+            session = await asyncio.wait_for(get_session_status(order_id), timeout=4.0)
             buyer = parse_buyer_from_session(session)
             updated = False
             if buyer.get("name") and order.buyer_name in (None, "Vipps-kunde"):

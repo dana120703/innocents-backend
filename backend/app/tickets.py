@@ -107,7 +107,10 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     use_smtp = bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD)
     use_resend = bool(getattr(settings, "RESEND_API_KEY", None) and resend)
     if not use_smtp and not use_resend:
-        log.warning("Verken SMTP eller RESEND_API_KEY satt – hopper over e-post")
+        log.warning("INGEN E-POST SENDT: Verken SMTP eller RESEND_API_KEY er satt i miljøvariabler (sjekk Railway)")
+        return
+    if not (order.buyer_email or "").strip():
+        log.warning("INGEN E-POST SENDT: Ordre %s mangler buyer_email", order.id)
         return
     # Oppsummering: f.eks. "2× Voksne (+12 år), 1× Barn (4-12 år)"
     order_lines = []
