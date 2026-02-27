@@ -133,7 +133,7 @@ async def get_session_status(order_id: str) -> dict:
     """Henter nåværende status for en Vipps checkout-sesjon."""
     url = f"{settings.VIPPS_BASE_URL}/checkout/v3/session/{order_id}"
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=5) as client:
         resp = await client.get(url, headers=_get_headers())
 
     if resp.status_code == 200:

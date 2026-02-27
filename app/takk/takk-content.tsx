@@ -123,7 +123,7 @@ export function TakkContent() {
     if (!orderId || !order || !["PENDING", "CREATED"].includes(order.status)) return
     const apiBase = getApiBase()
     const orderUrl = apiBase ? `${apiBase}/orders/${orderId}` : `/orders/${orderId}`
-    const maxPolls = 6
+    const maxPolls = 10
     let count = 0
     const interval = setInterval(async () => {
       count += 1
@@ -142,7 +142,7 @@ export function TakkContent() {
       } catch {
         // ignorer
       }
-    }, 2500)
+    }, 1500)
     return () => clearInterval(interval)
   }, [orderId, order?.status])
 

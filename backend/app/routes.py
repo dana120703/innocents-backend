@@ -1,6 +1,6 @@
 import logging
 import threading
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
@@ -35,6 +35,41 @@ def _send_ticket_email_thread(order_id: str) -> None:
             logging.getLogger(__name__).info("Tråd: billett-epost sendt for ordre %s, ticket_email_sent_at=%s", order_id, order.ticket_email_sent_at)
     except Exception as e:
         logging.getLogger(__name__).exception("Tråd: billett-epost feilet for ordre %s: %s", order_id, e)
+    finally:
+        db.close()
+
+
+async def _sync_order_with_vipps_background(order_id: str) -> None:
+    """Bakgrunnsoppgave: hent Vipps-sesjon og oppdater ordrestatus (PAID/CANCELLED/EXPIRED). Blokker ikke første GET."""
+    db = SessionLocal()
+    try:
+        session = await get_session_status(order_id)
+        state = get_session_payment_state(session)
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if not order or order.status not in (OrderStatus.CREATED, OrderStatus.PENDING):
+            return
+        if state == "paid":
+            buyer = parse_buyer_from_session(session)
+            if buyer.get("name"):
+                order.buyer_name = buyer["name"]
+            if buyer.get("email"):
+                order.buyer_email = buyer["email"]
+            if buyer.get("phone"):
+                order.buyer_phone = buyer["phone"]
+            order.status = OrderStatus.PAID
+            order.paid_at = order.paid_at or datetime.utcnow()
+            db.commit()
+            db.refresh(order)
+            issue_tickets(order, db)
+            threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
+        elif state == "cancelled":
+            order.status = OrderStatus.CANCELLED
+            db.commit()
+        elif state == "expired":
+            order.status = OrderStatus.EXPIRED
+            db.commit()
+    except Exception as e:
+        logging.getLogger(__name__).debug("Vipps bakgrunnssjekk for ordre %s: %s", order_id, e)
     finally:
         db.close()
 
@@ -171,43 +206,20 @@ def _order_to_response(order: Order) -> OrderResponse:
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
-async def get_order(order_id: str, db: Session = Depends(get_db)):
-    """Hent ordre fra DB. Ved PENDING: sjekk Vipps sesjon – kun set PAID og send billetter hvis betaling er gjennomført."""
+async def get_order(
+    order_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Hent ordre fra DB. Ved PENDING: returner raskt og synk Vipps i bakgrunn – takk-siden venter ikke på Vipps API."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
     if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
-        try:
-            session = await get_session_status(order_id)
-            state = get_session_payment_state(session)
-            if state == "paid":
-                buyer = parse_buyer_from_session(session)
-                if buyer.get("name"):
-                    order.buyer_name = buyer["name"]
-                if buyer.get("email"):
-                    order.buyer_email = buyer["email"]
-                if buyer.get("phone"):
-                    order.buyer_phone = buyer["phone"]
-                order.status = OrderStatus.PAID
-                order.paid_at = order.paid_at or datetime.utcnow()
-                db.commit()
-                db.refresh(order)
-                issue_tickets(order, db)
-                threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
-            elif state == "cancelled":
-                order.status = OrderStatus.CANCELLED
-                db.commit()
-                db.refresh(order)
-            elif state == "expired":
-                order.status = OrderStatus.EXPIRED
-                db.commit()
-                db.refresh(order)
-            # state == "pending": la ordren forbli PENDING (bruker kansellerte eller har ikke fullført)
-        except Exception:
-            # Ved feil (nettverk etc.): ikke sett PAID – la ordren forbli PENDING
-            db.refresh(order)
-    elif order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
+        background_tasks.add_task(_sync_order_with_vipps_background, order_id)
+        return _order_to_response(order)
+    if order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
         threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
 
     return _order_to_response(order)
@@ -215,45 +227,15 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
 
 @router.post("/orders/{order_id}/confirm")
 async def confirm_order_and_send_email(order_id: str, db: Session = Depends(get_db)):
-    """Synk betalingsstatus med Vipps og send billett-epost kun ved faktisk betaling. Kalles fra takk-siden."""
+    """Ved PENDING gjør GET /orders/{id} Vipps-sjekken i bakgrunn; her sender vi kun e-post hvis ordre allerede er PAID."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
     if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
-        try:
-            session = await get_session_status(order_id)
-            state = get_session_payment_state(session)
-            if state == "paid":
-                buyer = parse_buyer_from_session(session)
-                if buyer.get("name"):
-                    order.buyer_name = buyer["name"]
-                if buyer.get("email"):
-                    order.buyer_email = buyer["email"]
-                if buyer.get("phone"):
-                    order.buyer_phone = buyer["phone"]
-                order.status = OrderStatus.PAID
-                order.paid_at = order.paid_at or datetime.utcnow()
-                db.commit()
-                db.refresh(order)
-                tickets = issue_tickets(order, db)
-                if not order.ticket_email_sent_at:
-                    try:
-                        send_ticket_email(order, tickets, db)
-                        db.refresh(order)
-                        logging.getLogger(__name__).info("Confirm: billett-epost sendt for ordre %s", order_id)
-                    except Exception as e:
-                        logging.getLogger(__name__).exception("Billett-epost feilet for ordre %s: %s", order_id, e)
-            elif state == "cancelled":
-                order.status = OrderStatus.CANCELLED
-                db.commit()
-            elif state == "expired":
-                order.status = OrderStatus.EXPIRED
-                db.commit()
-        except Exception:
-            pass  # La ordren forbli PENDING ved feil
+        return {"ok": True}  # Vipps-sjekk skjer i bakgrunn fra GET; frontend poller og får oppdatert status
 
-    elif order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
+    if order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
         tickets = list(order.tickets) if order.tickets else []
         if not tickets:
             tickets = issue_tickets(order, db)
