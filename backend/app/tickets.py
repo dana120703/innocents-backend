@@ -7,6 +7,7 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from datetime import datetime
 import qrcode
 from sqlalchemy.orm import Session
@@ -22,15 +23,24 @@ except Exception:
     resend = None
 
 
-def _email_via_smtp(to: str, subject: str, html: str) -> None:
-    """Sender e-post via SMTP."""
+def _email_via_smtp(to: str, subject: str, html: str, cid_images: list[tuple[str, bytes]] | None = None) -> None:
+    """Sender e-post via SMTP. cid_images: [(Content-ID uten <>, png_bytes), ...] – QR vises i klienten."""
     if not settings.SMTP_HOST or not settings.SMTP_USER or not settings.SMTP_PASSWORD:
         raise RuntimeError("SMTP_HOST, SMTP_USER og SMTP_PASSWORD må være satt")
-    msg = MIMEMultipart("alternative")
+    if cid_images:
+        msg = MIMEMultipart("related")
+        msg.attach(MIMEText(html, "html", "utf-8"))
+        for cid, png_bytes in cid_images:
+            part = MIMEImage(png_bytes, _subtype="png")
+            part.add_header("Content-ID", f"<{cid}>")
+            part.add_header("Content-Disposition", "inline", filename=f"{cid}.png")
+            msg.attach(part)
+    else:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(html, "html", "utf-8"))
     msg["Subject"] = subject
     msg["From"] = settings.EMAIL_FROM
     msg["To"] = to
-    msg.attach(MIMEText(html, "html", "utf-8"))
     port = getattr(settings, "SMTP_PORT", 587)
     use_tls = getattr(settings, "SMTP_USE_TLS", True)
     if port == 465:
@@ -48,6 +58,11 @@ def _email_via_smtp(to: str, subject: str, html: str) -> None:
 
 def generate_qr_base64(token: str) -> str:
     """Lager QR-kode som base64-kodet PNG."""
+    return base64.b64encode(generate_qr_png_bytes(token)).decode()
+
+
+def generate_qr_png_bytes(token: str) -> bytes:
+    """Lager QR-kode som rå PNG-bytes (til vedlegg/cid i e-post)."""
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
@@ -57,10 +72,9 @@ def generate_qr_base64(token: str) -> str:
     qr.add_data(token)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
-
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode()
+    return buf.getvalue()
 
 
 def issue_tickets(order: Order, db: Session) -> list[Ticket]:
@@ -103,15 +117,22 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
         order_lines.append(f"{item.quantity}× {name}")
     order_summary = ", ".join(order_lines) if order_lines else f"{len(tickets)} billett(er)"
 
+    # SMTP: bruk cid-vedlegg slik at Gmail/Outlook viser QR. Resend: bruk data-URI.
+    cid_images: list[tuple[str, bytes]] = []
     ticket_blocks = ""
     for i, ticket in enumerate(tickets, 1):
         tt = db.query(TicketType).filter(TicketType.id == ticket.ticket_type_id).first()
-        qr_b64 = generate_qr_base64(ticket.qr_token)
+        if use_smtp:
+            cid = f"qr{i}"
+            cid_images.append((cid, generate_qr_png_bytes(ticket.qr_token)))
+            img_src = f"cid:{cid}"
+        else:
+            img_src = f"data:image/png;base64,{generate_qr_base64(ticket.qr_token)}"
         ticket_blocks += f"""
         <div style="margin: 24px 0; padding: 24px; border: 1px solid #e5e5e5; border-radius: 8px; text-align: center;">
             <p style="font-size: 14px; color: #666; margin: 0 0 8px 0;">Billett {i} av {len(tickets)}</p>
             <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">{tt.name if tt else "Billett"}</p>
-            <img src="data:image/png;base64,{qr_b64}" alt="QR-kode" style="width: 200px; height: 200px;" />
+            <img src="{img_src}" alt="QR-kode" style="width: 200px; height: 200px;" />
             <p style="font-size: 12px; color: #999; margin: 12px 0 0 0;">Token: {ticket.qr_token}</p>
         </div>
         """
@@ -145,7 +166,7 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
     subject = "🎟️ Dine billetter – En kveld for Gaza"
     try:
         if use_smtp:
-            _email_via_smtp(order.buyer_email, subject, html)
+            _email_via_smtp(order.buyer_email, subject, html, cid_images=cid_images)
         else:
             resend.Emails.send({
                 "from": settings.EMAIL_FROM,
