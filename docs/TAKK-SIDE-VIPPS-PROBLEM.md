@@ -52,6 +52,8 @@ Loggene viste årsaken:
 
 **Endring:** `PaymentTerminated` og `Terminated` er lagt til i både webhook (`FAILED_EVENTS` + `status_map`) og i `SESSION_STATE_CANCELLED` i Vipps.py. Da oppdateres ordren til CANCELLED enten ved webhook eller ved bakgrunnssjekk.
 
+**Ved betaling:** Vipps sender `PaymentSuccessful` (ikke bare PaymentCaptured). Vi hadde ikke `PaymentSuccessful` i `PAID_EVENTS` → «Event PaymentSuccessful ignorert» og ordren forble PENDING. **Løsning:** `PaymentSuccessful` og `Successful` er lagt til i `PAID_EVENTS` (webhook) og `SESSION_STATE_PAID` (Vipps.py).
+
 ---
 
 ## Hvis problemet fortsatt oppstår – ting å sjekke
