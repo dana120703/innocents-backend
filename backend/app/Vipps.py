@@ -2,8 +2,11 @@
 Vipps Checkout v3 API klient.
 Docs: https://developer.vippsmobilepay.com/docs/APIs/checkout-api/
 """
+import logging
 import httpx
 from app.config import settings
+
+log = logging.getLogger(__name__)
 
 
 """
@@ -130,7 +133,7 @@ async def create_checkout_session(
 
 
 async def get_session_status(order_id: str) -> dict:
-    """Henter nåværende status for en Vipps checkout-sesjon."""
+    """Henter nåværende status for en Vipps checkout-sesjon. Ved 404 (kansellert/utløpt) returneres tom dict."""
     url = f"{settings.VIPPS_BASE_URL}/checkout/v3/session/{order_id}"
 
     async with httpx.AsyncClient(timeout=5) as client:
@@ -138,6 +141,8 @@ async def get_session_status(order_id: str) -> dict:
 
     if resp.status_code == 200:
         return resp.json()
+    if resp.status_code == 404:
+        log.info("Vipps sesjon %s ikke funnet (404) – behandles som kansellert/utløpt", order_id)
     return {}
 
 

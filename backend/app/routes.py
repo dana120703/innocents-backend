@@ -44,10 +44,11 @@ async def _sync_order_with_vipps_background(order_id: str) -> None:
     db = SessionLocal()
     try:
         session = await get_session_status(order_id)
-        state = get_session_payment_state(session)
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order or order.status not in (OrderStatus.CREATED, OrderStatus.PENDING):
             return
+        # Vipps returnerer 404/tom respons for kansellerte eller utløpte sesjoner – da setter vi CANCELLED
+        state = get_session_payment_state(session) if session else "cancelled"
         if state == "paid":
             buyer = parse_buyer_from_session(session)
             if buyer.get("name"):
