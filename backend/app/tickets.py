@@ -178,4 +178,50 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
         order.ticket_email_sent_at = datetime.utcnow()
         db.commit()
     except Exception as e:
-        log.exception("E-post feilet til %s: %s", order.buyer_email, e) 
+        log.exception("E-post feilet til %s: %s", order.buyer_email, e)
+
+
+def send_confirmation_email(order: Order, db: Session):
+    """Sender kort bekreftelsesmail: «Din ordre er betalt og registrert.» Kalles ved PAID (billetter sendt allerede ved PENDING)."""
+    use_smtp = bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD)
+    use_resend = bool(getattr(settings, "RESEND_API_KEY", None) and resend)
+    if not use_smtp and not use_resend:
+        log.warning("Verken SMTP eller RESEND_API_KEY satt – hopper over bekreftelsesmail")
+        return
+    if not order.buyer_email:
+        log.warning("Ingen e-post for ordre %s – hopper over bekreftelsesmail", order.id)
+        return
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 16px;">
+        <h1 style="font-size: 24px; margin-bottom: 8px;">✅ Ordre bekreftet</h1>
+        <p style="color: #555;">En kveld for Gaza – Innocents</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+        <p>Hei {order.buyer_name},</p>
+        <p><strong>Din ordre er betalt og registrert.</strong></p>
+        <p style="margin: 16px 0; padding: 12px 16px; background: #f0fdf4; border-radius: 8px; font-size: 14px;">
+            Ordrenummer: {order.id}<br />
+            Beløp: {order.amount_nok} kr
+        </p>
+        <p style="font-size: 14px; color: #666;">Du har allerede mottatt billettene med QR-kode på e-post. Vis QR-koden i døra.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+        <p style="font-size: 12px; color: #999;">Takk for at du støtter Gaza-kvelden.</p>
+    </body>
+    </html>
+    """
+    subject = "✅ Ordre betalt og registrert – En kveld for Gaza"
+    try:
+        if use_smtp:
+            _email_via_smtp(order.buyer_email, subject, html)
+        else:
+            resend.Emails.send({
+                "from": settings.EMAIL_FROM,
+                "to": order.buyer_email,
+                "subject": subject,
+                "html": html,
+            })
+        log.info("Bekreftelsesmail sendt til %s for ordre %s", order.buyer_email, order.id)
+    except Exception as e:
+        log.exception("Bekreftelsesmail feilet til %s: %s", order.buyer_email, e)

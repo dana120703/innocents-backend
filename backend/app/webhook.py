@@ -21,7 +21,7 @@ import logging
 
 from app.db import get_db
 from app.models import Order, OrderStatus, ProcessedWebhook
-from app.tickets import issue_tickets, send_ticket_email
+from app.tickets import issue_tickets, send_ticket_email, send_confirmation_email
 from app.config import settings
 from app.Vipps import get_session_status, parse_buyer_from_session
 
@@ -112,14 +112,17 @@ async def vipps_webhook(
         db.commit()
         db.refresh(order)
 
-        # Utsted billetter og send epost
+        # Billetter er allerede sendt ved PENDING – send kun bekreftelsesmail. Ellers utsted + billett-epost.
         try:
-            tickets = issue_tickets(order, db)
-            send_ticket_email(order, tickets, db)
-            logger.info(f"Billetter utstedt og epost sendt for ordre {order.id}")
+            if order.ticket_email_sent_at:
+                send_confirmation_email(order, db)
+                logger.info(f"PAID: bekreftelsesmail sendt for ordre {order.id}")
+            else:
+                tickets = issue_tickets(order, db)
+                send_ticket_email(order, tickets, db)
+                logger.info(f"Billetter utstedt og epost sendt for ordre {order.id}")
         except Exception as e:
-            logger.error(f"Feil ved utstedelse av billetter for ordre {order.id}: {e}")
-            # Ikke raise – betalingen er registrert. Kan retryes manuelt.
+            logger.error(f"Feil ved e-post for ordre {order.id}: {e}")
 
     elif event_name in FAILED_EVENTS and order.status not in (OrderStatus.PAID,):
         status_map = {

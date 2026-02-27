@@ -15,7 +15,7 @@ from app.schemas import (
     CheckinRequest,
 )
 from app.Vipps import create_checkout_session, get_session_status, parse_buyer_from_session
-from app.tickets import issue_tickets, send_ticket_email
+from app.tickets import issue_tickets, send_ticket_email, send_confirmation_email
 
 router = APIRouter()
 
@@ -113,7 +113,7 @@ async def checkout_create(req: CreateCheckoutRequest, db: Session = Depends(get_
         db.commit()
         raise HTTPException(status_code=502, detail=f"Vipps-feil: {str(e)}")
 
-    # 4) Lagre Vipps-referanse og sett til PENDING
+    # 4) Lagre Vipps-referanse og sett til PENDING (billetter sendes når de når takk-siden)
     order.vipps_reference = order.id
     order.vipps_session_id = vipps_result.get("token")
     order.status = OrderStatus.PENDING
@@ -154,10 +154,9 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
-    # Ved PENDING: kunden har kommet til takk-siden (redirect fra Vipps) – ikke vent på capture/reservasjon.
-    # Vi stoler på at de fullførte flyten; betaling kan være reservert og capture komme 1–2 dager senere.
-    # Sett PAID med én gang, utsted billetter og send e-post.
-    if order.status == OrderStatus.PENDING:
+    # VELDIG VIKTIG: Kunden har nådd takk-siden = de har betalt. Her sender de billett-eposten med QR.
+    # CREATED/PENDING → sett PAID, utsted billetter, send billett-epost (kunden får billetten når de når takk-siden).
+    if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
         try:
             session = await get_session_status(order_id)
             buyer = parse_buyer_from_session(session)
@@ -175,18 +174,25 @@ async def get_order(order_id: str, db: Session = Depends(get_db)):
         order.paid_at = order.paid_at or datetime.utcnow()
         db.commit()
         db.refresh(order)
-        try:
-            tickets = issue_tickets(order, db)
-            send_ticket_email(order, tickets, db)
-            db.refresh(order)
-            logging.getLogger(__name__).info(
-                "Takk-siden: ordre %s satt til PAID, billetter utstedt, e-post sendt (uavhengig av Vipps capture)",
-                order_id,
-            )
-        except Exception as e:
-            logging.getLogger(__name__).exception(
-                "E-post ved takk-siden feilet for ordre %s: %s", order_id, e
-            )
+        tickets = issue_tickets(order, db)
+        if not order.ticket_email_sent_at:
+            # VELDIG VIKTIG: Kunden har nådd takk-siden – send billett-epost med QR her (garantert).
+            try:
+                send_ticket_email(order, tickets, db)
+                db.refresh(order)
+                logging.getLogger(__name__).info(
+                    "Takk-siden: ordre %s – BILLETT-EPOST SENDT (kunden har nådd takk-siden)",
+                    order_id,
+                )
+            except Exception as e:
+                logging.getLogger(__name__).exception(
+                    "BILLETT-EPOST ved takk-siden feilet for ordre %s: %s", order_id, e
+                )
+        else:
+            try:
+                send_confirmation_email(order, db)
+            except Exception as e:
+                logging.getLogger(__name__).exception("Bekreftelsesmail feilet: %s", e)
 
     # PAID men mangler kjøperinfo – hent fra Vipps når bruker åpner takk-siden
     if order.status == OrderStatus.PAID and (
