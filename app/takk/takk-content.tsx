@@ -69,7 +69,7 @@ export function TakkContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // GET /orders/{id} leser kun fra DB – rask. Vi viser ordren med én gang. Confirm (PAID + e-post) trigges i bakgrunn.
+  // Hent ordre og synk med Vipps (backend setter kun PAID ved bekreftet betaling; kansellert → CANCELLED).
   useEffect(() => {
     if (!orderId) {
       setLoading(false)
@@ -82,7 +82,7 @@ export function TakkContent() {
     let cancelled = false
     const timeoutMs = 15000
 
-    const fetchOrder = async () => {
+    const fetchOrder = async (): Promise<OrderState | null> => {
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
@@ -117,6 +117,34 @@ export function TakkContent() {
       cancelled = true
     }
   }, [orderId])
+
+  // Ved PENDING/CREATED: poll noen ganger slik at vi oppdaterer til PAID hvis betaling nettopp ble bekreftet
+  useEffect(() => {
+    if (!orderId || !order || !["PENDING", "CREATED"].includes(order.status)) return
+    const apiBase = getApiBase()
+    const orderUrl = apiBase ? `${apiBase}/orders/${orderId}` : `/orders/${orderId}`
+    const maxPolls = 6
+    let count = 0
+    const interval = setInterval(async () => {
+      count += 1
+      if (count > maxPolls) {
+        clearInterval(interval)
+        return
+      }
+      try {
+        const res = await fetch(orderUrl)
+        if (!res.ok) return
+        const data = await res.json()
+        setOrder(data)
+        if (data?.status === "PAID" || data?.status === "CANCELLED" || data?.status === "EXPIRED") {
+          clearInterval(interval)
+        }
+      } catch {
+        // ignorer
+      }
+    }, 2500)
+    return () => clearInterval(interval)
+  }, [orderId, order?.status])
 
   // Ingen orderId – f.eks. direkte til /takk
   if (!orderId) {
@@ -169,8 +197,32 @@ export function TakkContent() {
     )
   }
 
-  // Suksess: PAID, PENDING eller CREATED (backend setter PAID ved første kall til takk-siden)
-  if (order && ["PAID", "PENDING", "CREATED"].includes(order.status)) {
+  // Venter på betaling / sjekker status (PENDING eller CREATED – bruker kansellerte eller betaling ikke bekreftet ennå)
+  if (order && ["PENDING", "CREATED"].includes(order.status)) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <PageHeader />
+        <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-6 px-4 py-16">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+          <h1 className="font-serif text-xl text-foreground">Sjekker betalingsstatus</h1>
+          <p className="text-center text-sm text-muted-foreground">
+            Hvis du fullførte betalingen, oppdaterer vi siden automatisk. Kansellerte du, ble du ikke belastet.
+          </p>
+          <Button variant="outline" asChild className="gap-2">
+            <Link href="/">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Tilbake til billettsalg
+            </Link>
+          </Button>
+        </main>
+      </div>
+    )
+  }
+
+  // Suksess: kun ved PAID (betaling bekreftet hos Vipps)
+  if (order && order.status === "PAID") {
     return (
       <div className="flex min-h-screen flex-col bg-background">
         <PageHeader />

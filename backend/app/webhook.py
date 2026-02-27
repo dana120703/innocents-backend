@@ -36,10 +36,10 @@ sjekker mot ProcessedWebhook for å unngå dobbeltbehandling, og kaller issue_ti
 
 """
 
-# Vipps events som betyr "betalt" (begge format: PaymentCaptured og CAPTURED)
-PAID_EVENTS = {"PaymentCaptured", "PaymentAuthorized", "CAPTURED", "AUTHORIZED"}
+# Vipps events som betyr "betalt" (name/event + sessionState-format)
+PAID_EVENTS = {"PaymentCaptured", "PaymentAuthorized", "CAPTURED", "AUTHORIZED", "Captured"}
 # Vipps events som betyr "mislyktes"
-FAILED_EVENTS = {"PaymentAborted", "PaymentExpired", "PaymentCancelled", "SessionTerminated", "ABORTED", "EXPIRED", "TERMINATED", "CANCELLED"}
+FAILED_EVENTS = {"PaymentAborted", "PaymentExpired", "PaymentCancelled", "SessionTerminated", "ABORTED", "EXPIRED", "TERMINATED", "CANCELLED", "Cancelled", "Expired"}
 
 
 @router.post("/webhooks/vipps")
@@ -60,13 +60,19 @@ async def vipps_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Ugyldig JSON")
 
-    # Vipps kan sende event som "name", "event", "type" eller lignende
-    event_name = body.get("name") or body.get("event") or body.get("type") or body.get("paymentState")
+    # Vipps kan sende event som "name", "event", "type", "paymentState" eller "sessionState" (Checkout v3)
+    event_name = (
+        body.get("name")
+        or body.get("event")
+        or body.get("type")
+        or body.get("paymentState")
+        or body.get("sessionState")
+    )
     reference = body.get("reference") or body.get("orderId")
     event_id = body.get("idempotencyKey") or body.get("id") or (f"{reference}:{event_name}" if reference and event_name else None)
 
     if not event_name:
-        logger.warning("Webhook uten event-navn, body-keys: %s", list(body.keys())[:20])
+        logger.info("Webhook uten event-navn, body-keys: %s", list(body.keys())[:20])
 
     logger.info(f"Webhook mottatt: {event_name} for ordre {reference}")
 

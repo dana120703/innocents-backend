@@ -141,6 +141,33 @@ async def get_session_status(order_id: str) -> dict:
     return {}
 
 
+# Verdier fra Vipps som betyr betalt / kansellert / utløpt (sessionState eller state)
+SESSION_STATE_PAID = {"Captured", "CAPTURED", "PaymentCaptured", "PaymentAuthorized", "AUTHORIZED", "Reserved"}
+SESSION_STATE_CANCELLED = {"Cancelled", "CANCELLED", "PaymentCancelled", "PaymentAborted", "ABORTED", "SessionTerminated", "TERMINATED"}
+SESSION_STATE_EXPIRED = {"Expired", "EXPIRED", "PaymentExpired"}
+
+
+def get_session_payment_state(session: dict) -> str:
+    """
+    Avgjør om Vipps-sesjonen er betalt, kansellert eller utløpt.
+    Returnerer "paid", "cancelled", "expired" eller "pending".
+    """
+    if not session:
+        return "pending"
+    state = (
+        (session.get("sessionState") or session.get("state") or session.get("paymentState") or "")
+    )
+    if isinstance(state, str):
+        state = state.strip()
+    if state in SESSION_STATE_PAID:
+        return "paid"
+    if state in SESSION_STATE_CANCELLED:
+        return "cancelled"
+    if state in SESSION_STATE_EXPIRED:
+        return "expired"
+    return "pending"
+
+
 def parse_buyer_from_session(session: dict) -> dict:
     """
     Henter kjøperens navn, e-post og telefon fra Vipps session-respons.

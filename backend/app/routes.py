@@ -15,7 +15,7 @@ from app.schemas import (
     TicketTypeResponse,
     CheckinRequest,
 )
-from app.Vipps import create_checkout_session, get_session_status, parse_buyer_from_session
+from app.Vipps import create_checkout_session, get_session_status, get_session_payment_state, parse_buyer_from_session
 from app.tickets import issue_tickets, send_ticket_email, send_confirmation_email
 
 
@@ -171,19 +171,42 @@ def _order_to_response(order: Order) -> OrderResponse:
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
-def get_order(order_id: str, db: Session = Depends(get_db)):
-    """Hent ordre fra DB. Hvis CREATED/PENDING settes PAID; e-post sendes i tråd så respons er rask."""
+async def get_order(order_id: str, db: Session = Depends(get_db)):
+    """Hent ordre fra DB. Ved PENDING: sjekk Vipps sesjon – kun set PAID og send billetter hvis betaling er gjennomført."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
     if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
-        order.status = OrderStatus.PAID
-        order.paid_at = order.paid_at or datetime.utcnow()
-        db.commit()
-        db.refresh(order)
-        issue_tickets(order, db)
-        threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
+        try:
+            session = await get_session_status(order_id)
+            state = get_session_payment_state(session)
+            if state == "paid":
+                buyer = parse_buyer_from_session(session)
+                if buyer.get("name"):
+                    order.buyer_name = buyer["name"]
+                if buyer.get("email"):
+                    order.buyer_email = buyer["email"]
+                if buyer.get("phone"):
+                    order.buyer_phone = buyer["phone"]
+                order.status = OrderStatus.PAID
+                order.paid_at = order.paid_at or datetime.utcnow()
+                db.commit()
+                db.refresh(order)
+                issue_tickets(order, db)
+                threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
+            elif state == "cancelled":
+                order.status = OrderStatus.CANCELLED
+                db.commit()
+                db.refresh(order)
+            elif state == "expired":
+                order.status = OrderStatus.EXPIRED
+                db.commit()
+                db.refresh(order)
+            # state == "pending": la ordren forbli PENDING (bruker kansellerte eller har ikke fullført)
+        except Exception:
+            # Ved feil (nettverk etc.): ikke sett PAID – la ordren forbli PENDING
+            db.refresh(order)
     elif order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
         threading.Thread(target=_send_ticket_email_thread, args=(order_id,), daemon=True).start()
 
@@ -191,25 +214,44 @@ def get_order(order_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/orders/{order_id}/confirm")
-def confirm_order_and_send_email(order_id: str, db: Session = Depends(get_db)):
-    """Sett ordre til PAID og send billett-epost. Kalles i bakgrunn fra takk-siden – kan ta noen sekunder (SMTP)."""
+async def confirm_order_and_send_email(order_id: str, db: Session = Depends(get_db)):
+    """Synk betalingsstatus med Vipps og send billett-epost kun ved faktisk betaling. Kalles fra takk-siden."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Ordre ikke funnet")
 
     if order.status in (OrderStatus.CREATED, OrderStatus.PENDING):
-        order.status = OrderStatus.PAID
-        order.paid_at = order.paid_at or datetime.utcnow()
-        db.commit()
-        db.refresh(order)
-        tickets = issue_tickets(order, db)
-        if not order.ticket_email_sent_at:
-            try:
-                send_ticket_email(order, tickets, db)
+        try:
+            session = await get_session_status(order_id)
+            state = get_session_payment_state(session)
+            if state == "paid":
+                buyer = parse_buyer_from_session(session)
+                if buyer.get("name"):
+                    order.buyer_name = buyer["name"]
+                if buyer.get("email"):
+                    order.buyer_email = buyer["email"]
+                if buyer.get("phone"):
+                    order.buyer_phone = buyer["phone"]
+                order.status = OrderStatus.PAID
+                order.paid_at = order.paid_at or datetime.utcnow()
+                db.commit()
                 db.refresh(order)
-                logging.getLogger(__name__).info("Confirm: billett-epost sendt for ordre %s", order_id)
-            except Exception as e:
-                logging.getLogger(__name__).exception("Billett-epost feilet for ordre %s: %s", order_id, e)
+                tickets = issue_tickets(order, db)
+                if not order.ticket_email_sent_at:
+                    try:
+                        send_ticket_email(order, tickets, db)
+                        db.refresh(order)
+                        logging.getLogger(__name__).info("Confirm: billett-epost sendt for ordre %s", order_id)
+                    except Exception as e:
+                        logging.getLogger(__name__).exception("Billett-epost feilet for ordre %s: %s", order_id, e)
+            elif state == "cancelled":
+                order.status = OrderStatus.CANCELLED
+                db.commit()
+            elif state == "expired":
+                order.status = OrderStatus.EXPIRED
+                db.commit()
+        except Exception:
+            pass  # La ordren forbli PENDING ved feil
 
     elif order.status == OrderStatus.PAID and order.ticket_email_sent_at is None:
         tickets = list(order.tickets) if order.tickets else []
