@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     EMAIL_FROM: str = "noreply@example.com"
 
+    # Rabatt: 50 = 50 % av (tidsbegrenset tilbud). 0 = ingen rabatt.
+    DISCOUNT_PERCENT: int = 50
+
     # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str
     FRONTEND_RETURN_URL: str = "https://billetter.innocents.no"

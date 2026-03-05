@@ -15,6 +15,7 @@ from app.schemas import (
     TicketTypeResponse,
     CheckinRequest,
 )
+from app.config import settings
 from app.Vipps import create_checkout_session, get_session_status, get_session_payment_state, parse_buyer_from_session
 from app.tickets import issue_tickets, send_ticket_email, send_confirmation_email
 
@@ -87,15 +88,25 @@ GET /tickets/verify og POST /tickets/checkin (for scanning i døra).
 
 # ─── Billettyper (frontend henter her) ────────────────────────────────────────
 
+def _discounted_price(price_nok: int, discount_percent: int) -> int:
+    """Pris i kroner etter rabatt (rundes ned til heltall)."""
+    if discount_percent <= 0:
+        return price_nok
+    return max(0, (price_nok * (100 - discount_percent)) // 100)
+
+
 @router.get("/ticket-types", response_model=List[TicketTypeResponse])
 def list_ticket_types(db: Session = Depends(get_db)):
-    """Returnerer alle aktive billettyper med id, navn, pris og kapasitet."""
+    """Returnerer alle aktive billettyper med id, navn, pris (original + rabatt) og kapasitet."""
+    discount = getattr(settings, "DISCOUNT_PERCENT", 0) or 0
     types = db.query(TicketType).filter(TicketType.is_active == True).all()
     return [
         TicketTypeResponse(
             id=tt.id,
             name=tt.name,
             price_nok=tt.price_nok,
+            discounted_price_nok=_discounted_price(tt.price_nok, discount),
+            discount_percent=discount,
             capacity=tt.capacity,
             sold_count=tt.sold_count or 0,
         )
@@ -127,11 +138,13 @@ async def checkout_create(req: CreateCheckoutRequest, db: Session = Depends(get_
                 detail=f"Ikke nok billetter tilgjengelig for '{tt.name}'. Tilgjengelig: {available}",
             )
 
-        total_nok += tt.price_nok * cart_item.quantity
+        discount = getattr(settings, "DISCOUNT_PERCENT", 0) or 0
+        unit_price = _discounted_price(tt.price_nok, discount)
+        total_nok += unit_price * cart_item.quantity
         items_data.append({
             "ticket_type": tt,
             "quantity": cart_item.quantity,
-            "unit_price_nok": tt.price_nok,
+            "unit_price_nok": unit_price,
             "name": tt.name,
             "qty": cart_item.quantity,
         })
@@ -201,6 +214,7 @@ def _order_to_response(order: Order) -> OrderResponse:
         buyer_name=order.buyer_name,
         buyer_phone=order.buyer_phone,
         total_quantity=total_qty,
+        total_tickets=order.total_tickets,
         items=items,
         ticket_email_sent_at=order.ticket_email_sent_at,
     )

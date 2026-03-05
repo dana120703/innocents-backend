@@ -88,6 +88,7 @@ def issue_tickets(order: Order, db: Session) -> list[Ticket]:
             db.add(ticket)
             tickets.append(ticket)
 
+    order.total_tickets = len(tickets)
     db.commit()
     for t in tickets:
         db.refresh(t)

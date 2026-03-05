@@ -64,6 +64,7 @@ class Order(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     paid_at = Column(DateTime, nullable=True)
     ticket_email_sent_at = Column(DateTime, nullable=True)  # unngår duplikat e-post
+    total_tickets = Column(Integer, nullable=True)  # antall billetter totalt for ordren (satt ved issue_tickets)
 
     items = relationship("OrderItem", back_populates="order")
     tickets = relationship("Ticket", back_populates="order")

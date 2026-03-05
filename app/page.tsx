@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import {
   TicketSelector,
   type TicketSelection,
+  type PricesByLabel,
 } from "@/components/ticket-selector"
 import { Button } from "@/components/ui/button"
 import { Lock, Ticket } from "lucide-react"
@@ -21,8 +22,20 @@ function getApiBase(): string {
 }
 const API_BASE = getApiBase()
 
+type TicketTypeFromApi = {
+  id: string
+  name: string
+  price_nok: number
+  discounted_price_nok: number
+  discount_percent: number
+  capacity: number
+  sold_count: number
+}
+
 export default function TicketPage() {
   const [ticketTypeIds, setTicketTypeIds] = useState<Record<string, string>>({})
+  const [pricesByLabel, setPricesByLabel] = useState<PricesByLabel | undefined>(undefined)
+  const [discountPercent, setDiscountPercent] = useState<number>(0)
   const [selection, setSelection] = useState<TicketSelection>({
     voksne: 0,
     barn_4_12: 0,
@@ -43,8 +56,10 @@ export default function TicketPage() {
       .then((res) =>
         res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))
       )
-      .then((types: { id: string; name: string }[]) => {
+      .then((types: TicketTypeFromApi[]) => {
         const map: Record<string, string> = {}
+        const prices: PricesByLabel = {}
+        let discount = 0
         for (const t of types) {
           if (
             [
@@ -55,9 +70,16 @@ export default function TicketPage() {
             ].includes(t.name)
           ) {
             map[t.name] = t.id
+            prices[t.name] = {
+              original: t.price_nok,
+              discounted: t.discounted_price_nok ?? t.price_nok,
+            }
+            if (t.discount_percent) discount = t.discount_percent
           }
         }
         setTicketTypeIds(map)
+        setPricesByLabel(Object.keys(prices).length > 0 ? prices : undefined)
+        setDiscountPercent(discount)
       })
       .catch(() =>
         toast.error(`Kunne ikke koble til billettserver. Sjekk at backend kjører på ${url}`)
@@ -66,11 +88,15 @@ export default function TicketPage() {
 
   const totalTickets =
     selection.voksne + selection.barn_4_12 + selection.barn_0_3 + selection.bord
-  const totalPrice =
-    selection.voksne * 249 +
-    selection.barn_4_12 * 50 +
-    selection.barn_0_3 * 0 +
-    selection.bord * 2241
+  const totalPrice = pricesByLabel
+    ? selection.voksne * (pricesByLabel["Voksne (+12 år)"]?.discounted ?? 249) +
+      selection.barn_4_12 * (pricesByLabel["Barn (4-12 år)"]?.discounted ?? 50) +
+      selection.barn_0_3 * (pricesByLabel["Barn (0-3 år)"]?.discounted ?? 0) +
+      selection.bord * (pricesByLabel["Bestille bord (10 personer)"]?.discounted ?? 2241)
+    : selection.voksne * 249 +
+      selection.barn_4_12 * 50 +
+      selection.barn_0_3 * 0 +
+      selection.bord * 2241
 
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault()
@@ -190,11 +216,22 @@ export default function TicketPage() {
 
         {/* Skjema i kort for fokus */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          {discountPercent > 0 && (
+            <div className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-center">
+              <p className="text-sm font-semibold text-primary">
+                🎉 {discountPercent} % rabatt på alle billetter – tidsbegrenset tilbud
+              </p>
+            </div>
+          )}
           <section className="rounded-2xl border border-border bg-card p-5 shadow-sm md:p-6">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Velg antall billetter
             </h2>
-            <TicketSelector selection={selection} onChange={setSelection} />
+            <TicketSelector
+              selection={selection}
+              onChange={setSelection}
+              pricesByLabel={pricesByLabel}
+            />
 
             {totalTickets > 0 && (
               <div className="mt-4 flex items-center justify-between rounded-xl bg-primary px-4 py-3.5 text-primary-foreground shadow-md">

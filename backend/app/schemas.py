@@ -16,7 +16,9 @@ Pydantic-modeller som definerer hva som er gyldig input og output for API-endepu
 class TicketTypeResponse(BaseModel):
     id: str
     name: str
-    price_nok: int
+    price_nok: int  # original pris fra DB
+    discounted_price_nok: int  # pris etter rabatt (brukes ved betaling)
+    discount_percent: int = 0  # f.eks. 50 for «50 % rabatt – tidsbegrenset»
     capacity: int
     sold_count: int = 0
 
@@ -59,6 +61,7 @@ class OrderResponse(BaseModel):
     buyer_name: str | None = None
     buyer_phone: str | None = None
     total_quantity: int = 0
+    total_tickets: int | None = None  # antall billetter totalt (lagret i DB ved utstedelse)
     items: List[OrderItemResponse] = []  # f.eks. [{ ticket_type_name: "Voksne (+12 år)", quantity: 2 }, ...]
     ticket_email_sent_at: datetime | None = None  # satt når billett-e-post er sendt (PAID + e-post OK)
 

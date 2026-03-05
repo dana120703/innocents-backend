@@ -37,12 +37,17 @@ const tickets = [
   },
 ]
 
+/** Priser fra API (original + rabatt). Nøkkel = ticket.label. */
+export type PricesByLabel = Record<string, { original: number; discounted: number }>
+
 interface TicketSelectorProps {
   selection: TicketSelection
   onChange: (selection: TicketSelection) => void
+  /** Ved 50 % rabatt fra API – viser gjennomstreket originalpris og rabattpris */
+  pricesByLabel?: PricesByLabel
 }
 
-export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
+export function TicketSelector({ selection, onChange, pricesByLabel }: TicketSelectorProps) {
   const updateCount = (id: keyof TicketSelection, delta: number) => {
     const newVal = Math.max(0, Math.min(20, selection[id] + delta))
     onChange({ ...selection, [id]: newVal })
@@ -53,7 +58,10 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
       {tickets.map((ticket) => {
         const count = selection[ticket.id]
         const isActive = count > 0
-        const isFree = ticket.price === 0
+        const apiPrice = pricesByLabel?.[ticket.label]
+        const displayPrice = apiPrice ? apiPrice.discounted : ticket.price
+        const isFree = displayPrice === 0
+        const hasDiscount = apiPrice && apiPrice.original > apiPrice.discounted
 
         return (
           <div
@@ -81,7 +89,18 @@ export function TicketSelector({ selection, onChange }: TicketSelectorProps) {
                   isFree ? "text-muted-foreground" : "text-foreground"
                 )}
               >
-                {isFree ? "Gratis" : `${ticket.price} kr`}
+                {isFree ? (
+                  "Gratis"
+                ) : hasDiscount ? (
+                  <span className="flex flex-col items-end gap-0.5">
+                    <span className="text-muted-foreground line-through text-xs">
+                      {apiPrice!.original} kr
+                    </span>
+                    <span className="text-primary font-bold">{apiPrice!.discounted} kr</span>
+                  </span>
+                ) : (
+                  `${displayPrice} kr`
+                )}
               </span>
               <div className="flex items-center gap-0.5 rounded-lg bg-background/80 p-0.5 shadow-inner">
                 <button
