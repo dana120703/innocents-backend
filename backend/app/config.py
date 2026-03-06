@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_USE_TLS: bool = True
     EMAIL_FROM: str = "noreply@example.com"
+    # E-post som får varsel ved hver ny betalt bestilling (kommaseparert for flere)
+    ADMIN_NOTIFICATION_EMAIL: str = "post@pixlmedia.no,post@innocents.no"
 
     # Rabatt: 50 = 50 % av (tidsbegrenset tilbud). 0 = ingen rabatt.
     DISCOUNT_PERCENT: int = 50

@@ -163,8 +163,41 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
         log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id)
         order.ticket_email_sent_at = datetime.utcnow()
         db.commit()
+        _send_admin_new_order_notification(order, len(tickets))
     except Exception as e:
         log.exception("E-post feilet til %s: %s", order.buyer_email, e)
+
+
+def _send_admin_new_order_notification(order: Order, ticket_count: int = 0) -> None:
+    """Sender en enkel e-post til admin ved hver ny betalt bestilling (ADMIN_NOTIFICATION_EMAIL, kommaseparert for flere)."""
+    raw = getattr(settings, "ADMIN_NOTIFICATION_EMAIL", None) or ""
+    recipients = [e.strip() for e in str(raw).split(",") if e.strip()]
+    if not recipients:
+        return
+    if not (settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD):
+        return
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: sans-serif; max-width: 480px; padding: 16px;">
+        <h2 style="font-size: 18px;">Ny bestilling</h2>
+        <p><strong>Ordre:</strong> {order.id}</p>
+        <p><strong>Navn:</strong> {order.buyer_name}</p>
+        <p><strong>E-post:</strong> {order.buyer_email}</p>
+        <p><strong>Telefon:</strong> {order.buyer_phone}</p>
+        <p><strong>Antall billetter:</strong> {ticket_count}</p>
+        <p><strong>Beløp:</strong> {order.amount_nok} kr</p>
+    </body>
+    </html>
+    """
+    subject = "Ny bestilling – En kveld for Gaza"
+    for to in recipients:
+        try:
+            _email_via_smtp(to, subject, html)
+            log.info("Admin-varsel sendt til %s for ordre %s", to, order.id)
+        except Exception as e:
+            log.warning("Admin-varsel feilet til %s: %s", to, e)
 
 
 def send_confirmation_email(order: Order, db: Session):
