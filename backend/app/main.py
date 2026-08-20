@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import engine
 from app.models import Base
+from app.admin import router as admin_router
 from app.routes import router as main_router
 from app.schema_guard import ensure_columns
 from app.webhook import router as webhook_router
@@ -38,6 +39,7 @@ app.add_middleware(
 
 app.include_router(main_router)
 app.include_router(webhook_router)
+app.include_router(admin_router)
 
 
 @app.get("/")

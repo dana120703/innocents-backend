@@ -61,6 +61,8 @@ Session mode bruker Supabase sin pooler som støtter IPv4, og fungerer der direk
 | POST | `/webhooks/vipps` | Vipps callback (betaling bekreftet) |
 | GET | `/tickets/verify?token=...` | Valider billett i døra |
 | POST | `/tickets/checkin` | Sjekk inn billett (marker som brukt) |
+| POST | `/admin/login` | Innlogging til admin-siden |
+| GET | `/admin/orders` | Alle bestillinger (krever token) – se `docs/ADMIN.md` |
 
 ## Oppsett
 

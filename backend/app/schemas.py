@@ -84,3 +84,30 @@ class TicketVerifyResponse(BaseModel):
 
 class CheckinRequest(BaseModel):
     token: str
+
+
+# --- Admin ---
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AdminLoginResponse(BaseModel):
+    token: str
+    expires_at: datetime
+
+
+class AdminOrderResponse(BaseModel):
+    """Én rad i admin-oversikten. Inneholder personopplysninger – krever innlogging."""
+    order_id: str
+    created_at: datetime
+    status: str
+    buyer_name: str | None = None
+    buyer_email: str | None = None
+    buyer_phone: str | None = None
+    amount_nok: int
+    ticket_count: int = 0
+    checked_in_count: int = 0
+    items: str = ""            # f.eks. "2× Billett"
+    ticket_email_sent_at: datetime | None = None

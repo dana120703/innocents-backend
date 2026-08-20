@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     # E-post som får varsel ved hver ny betalt bestilling (kommaseparert for flere)
     ADMIN_NOTIFICATION_EMAIL: str = "post@pixlmedia.no,post@innocents.no"
 
+    # Admin-siden (/admin). Passordet skal ALDRI stå i koden.
+    # Lag hash med: python3 scripts/lag_admin_passord.py
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD_HASH: Optional[str] = None
+    # Reserve: passord i klartekst. Virker, men logger en advarsel – bruk hash.
+    ADMIN_PASSWORD: Optional[str] = None
+    # Nøkkel innloggingstokenene signeres med. Uten denne brukes VIPPS_WEBHOOK_SECRET.
+    ADMIN_SECRET: Optional[str] = None
+
     # Kampanjepris: gjelder frem til dette tidspunktet, deretter ordinær pris automatisk.
     # Norsk tid hvis tidssone utelates. Tom streng = ingen kampanje (kun ordinær pris).
     # Selve kampanjeprisen settes per billettype i update_ticket_types.py.
