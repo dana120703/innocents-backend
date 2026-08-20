@@ -56,12 +56,31 @@ def lag_passord_hash(passord: str, iterasjoner: int = 240_000) -> str:
     )
 
 
+def _rydd_hash(verdi: str) -> str:
+    """
+    Tåler de vanligste innlimingsfeilene fra Railway:
+    «ADMIN_PASSWORD_HASH=pbkdf2...» (navnet ble med i verdifeltet), verdien i
+    anførselstegn, og mellomrom eller linjeskift rundt.
+    """
+    verdi = verdi.strip().strip('"').strip("'").strip()
+    if verdi.upper().startswith("ADMIN_PASSWORD_HASH="):
+        verdi = verdi.split("=", 1)[1].strip().strip('"').strip("'").strip()
+    return verdi
+
+
 def _passord_stemmer(passord: str) -> bool:
     """Sjekker passordet mot ADMIN_PASSWORD_HASH, eller ADMIN_PASSWORD som reserve."""
-    lagret_hash = (getattr(settings, "ADMIN_PASSWORD_HASH", "") or "").strip()
+    lagret_hash = _rydd_hash(getattr(settings, "ADMIN_PASSWORD_HASH", "") or "")
     if lagret_hash:
         try:
-            metode, iterasjoner, salt_b64, hash_b64 = lagret_hash.split("$")
+            deler = lagret_hash.split("$")
+            if len(deler) != 4:
+                raise ValueError(
+                    f"forventet 4 deler adskilt med $, fant {len(deler)}. "
+                    "Ble verdien satt fra et shell? Da kan $240000 ha blitt tolket "
+                    "som en variabel. Lim den inn i Railway-grensesnittet i stedet."
+                )
+            metode, iterasjoner, salt_b64, hash_b64 = deler
             if metode != "pbkdf2_sha256":
                 raise ValueError(f"ukjent metode {metode}")
             forventet = base64.b64decode(hash_b64)
