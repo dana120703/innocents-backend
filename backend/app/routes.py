@@ -94,22 +94,28 @@ def list_ticket_types(db: Session = Depends(get_db)):
     """Aktive billettyper med ordinær pris, prisen som gjelder nå, og kampanjeinfo."""
     types = db.query(TicketType).filter(TicketType.is_active == True).all()
     ends_at = campaign_ends_at()
-    active = campaign_is_active()
-    return [
-        TicketTypeResponse(
+    perioden_løper = campaign_is_active()
+
+    svar = []
+    for tt in types:
+        pris = effective_price(tt)
+        # Kampanjen gjelder denne billettypen kun hvis den faktisk har en lavere
+        # kampanjepris – ikke bare fordi kampanjeperioden løper. Ellers ville vi
+        # oppgitt en utløpstid for en billett som ikke er på tilbud.
+        kampanje = perioden_løper and pris < tt.price_nok
+        svar.append(TicketTypeResponse(
             id=tt.id,
             name=tt.name,
             price_nok=tt.price_nok,
-            discounted_price_nok=effective_price(tt),
+            discounted_price_nok=pris,
             discount_percent=discount_percent(tt),
             capacity=tt.capacity,
             sold_count=tt.sold_count or 0,
-            campaign_active=active and effective_price(tt) < tt.price_nok,
-            campaign_label=getattr(settings, "CAMPAIGN_LABEL", None) if active else None,
-            campaign_ends_at=ends_at if active else None,
-        )
-        for tt in types
-    ]
+            campaign_active=kampanje,
+            campaign_label=getattr(settings, "CAMPAIGN_LABEL", None) if kampanje else None,
+            campaign_ends_at=ends_at if kampanje else None,
+        ))
+    return svar
 
 
 # ─── Checkout ────────────────────────────────────────────────────────────────
