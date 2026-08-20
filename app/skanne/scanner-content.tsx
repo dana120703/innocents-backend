@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { CheckCircle2, XCircle, Loader2, Camera, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { EVENT } from "@/lib/event"
 
 function getApiBase(): string {
   if (typeof window === "undefined") return ""
@@ -228,7 +229,7 @@ export function ScannerContent() {
       )}
 
       <p className="text-center text-xs text-muted-foreground">
-        En kveld for Gaza – Innocents. Bruk kun for innsjekk i døra.
+        {EVENT.title} – {EVENT.organizer}. Bruk kun for innsjekk i døra.
       </p>
     </div>
   )

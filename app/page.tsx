@@ -1,15 +1,18 @@
 "use client"
 
-import { useState, useEffect, type FormEvent } from "react"
+import { useState, useEffect, useCallback, type FormEvent } from "react"
 import Image from "next/image"
 import { toast } from "sonner"
 import {
   TicketSelector,
+  availableOf,
   type TicketSelection,
-  type PricesByLabel,
+  type TicketTypeOption,
 } from "@/components/ticket-selector"
+import { PriceCountdown } from "@/components/price-countdown"
+import { EVENT } from "@/lib/event"
 import { Button } from "@/components/ui/button"
-import { Lock, Ticket } from "lucide-react"
+import { CalendarDays, Clock, Lock, MapPin, Ticket } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -22,26 +25,9 @@ function getApiBase(): string {
 }
 const API_BASE = getApiBase()
 
-type TicketTypeFromApi = {
-  id: string
-  name: string
-  price_nok: number
-  discounted_price_nok: number
-  discount_percent: number
-  capacity: number
-  sold_count: number
-}
-
 export default function TicketPage() {
-  const [ticketTypeIds, setTicketTypeIds] = useState<Record<string, string>>({})
-  const [pricesByLabel, setPricesByLabel] = useState<PricesByLabel | undefined>(undefined)
-  const [discountPercent, setDiscountPercent] = useState<number>(0)
-  const [selection, setSelection] = useState<TicketSelection>({
-    voksne: 0,
-    barn_4_12: 0,
-    barn_0_3: 0,
-    bord: 0,
-  })
+  const [ticketTypes, setTicketTypes] = useState<TicketTypeOption[]>([])
+  const [selection, setSelection] = useState<TicketSelection>({})
   const [email, setEmail] = useState("")
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
@@ -50,53 +36,42 @@ export default function TicketPage() {
   const [phoneError, setPhoneError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  useEffect(() => {
+  // Billettyper, navn og priser kommer utelukkende fra backend – ingenting er hardkodet her.
+  const loadTicketTypes = useCallback((keepSelection = false) => {
     const url = API_BASE ? `${API_BASE}/ticket-types` : "/ticket-types"
-    fetch(url)
+    return fetch(url)
       .then((res) =>
         res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))
       )
-      .then((types: TicketTypeFromApi[]) => {
-        const map: Record<string, string> = {}
-        const prices: PricesByLabel = {}
-        let discount = 0
-        for (const t of types) {
-          if (
-            [
-              "Voksne (+12 år)",
-              "Barn (4-12 år)",
-              "Barn (0-3 år)",
-              "Bestille bord (10 personer)",
-            ].includes(t.name)
-          ) {
-            map[t.name] = t.id
-            prices[t.name] = {
-              original: t.price_nok,
-              discounted: t.discounted_price_nok ?? t.price_nok,
-            }
-            if (t.discount_percent) discount = t.discount_percent
-          }
+      .then((types: TicketTypeOption[]) => {
+        setTicketTypes(types)
+        if (!keepSelection) {
+          setSelection(Object.fromEntries(types.map((t) => [t.id, 0])))
         }
-        setTicketTypeIds(map)
-        setPricesByLabel(Object.keys(prices).length > 0 ? prices : undefined)
-        setDiscountPercent(discount)
       })
       .catch(() =>
         toast.error(`Kunne ikke koble til billettserver. Sjekk at backend kjører på ${url}`)
       )
   }, [])
 
-  const totalTickets =
-    selection.voksne + selection.barn_4_12 + selection.barn_0_3 + selection.bord
-  const totalPrice = pricesByLabel
-    ? selection.voksne * (pricesByLabel["Voksne (+12 år)"]?.discounted ?? 249) +
-      selection.barn_4_12 * (pricesByLabel["Barn (4-12 år)"]?.discounted ?? 50) +
-      selection.barn_0_3 * (pricesByLabel["Barn (0-3 år)"]?.discounted ?? 0) +
-      selection.bord * (pricesByLabel["Bestille bord (10 personer)"]?.discounted ?? 2241)
-    : selection.voksne * 249 +
-      selection.barn_4_12 * 50 +
-      selection.barn_0_3 * 0 +
-      selection.bord * 2241
+  useEffect(() => {
+    loadTicketTypes()
+  }, [loadTicketTypes])
+
+  // Når nedtellingen når null har prisen gått opp – hent nye priser så kunden
+  // ikke står igjen med lanseringsprisen på skjermen.
+  const handleCampaignExpired = useCallback(() => {
+    loadTicketTypes(true).then(() =>
+      toast.info("Lanseringsprisen er utløpt – prisen er oppdatert.")
+    )
+  }, [loadTicketTypes])
+
+  const campaign = ticketTypes.find((t) => t.campaign_active && t.campaign_ends_at)
+  const totalTickets = ticketTypes.reduce((sum, t) => sum + (selection[t.id] ?? 0), 0)
+  const totalPrice = ticketTypes.reduce(
+    (sum, t) => sum + (selection[t.id] ?? 0) * t.discounted_price_nok,
+    0
+  )
 
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault()
@@ -126,21 +101,23 @@ export default function TicketPage() {
       setPhoneError("Telefon er påkrevd")
       return
     }
-    const voksneId = ticketTypeIds["Voksne (+12 år)"]
-    const barn412Id = ticketTypeIds["Barn (4-12 år)"]
-    const barn03Id = ticketTypeIds["Barn (0-3 år)"]
-    const bordId = ticketTypeIds["Bestille bord (10 personer)"]
-    if (!voksneId || !barn412Id || !barn03Id || !bordId) {
+    if (ticketTypes.length === 0) {
       toast.error("Billettyper ikke lastet ennå. Vent litt og prøv igjen.")
+      return
+    }
+    // Flere billetter valgt enn det er igjen? Backend svarer 409 – vi sier fra først.
+    const oversold = ticketTypes.find((t) => (selection[t.id] ?? 0) > availableOf(t))
+    if (oversold) {
+      toast.error(
+        `Ikke nok billetter igjen av «${oversold.name}». Tilgjengelig: ${availableOf(oversold)}`
+      )
       return
     }
     setIsSubmitting(true)
     try {
-      const items: { ticket_type_id: string; quantity: number }[] = []
-      if (selection.voksne > 0) items.push({ ticket_type_id: voksneId, quantity: selection.voksne })
-      if (selection.barn_4_12 > 0) items.push({ ticket_type_id: barn412Id, quantity: selection.barn_4_12 })
-      if (selection.barn_0_3 > 0) items.push({ ticket_type_id: barn03Id, quantity: selection.barn_0_3 })
-      if (selection.bord > 0) items.push({ ticket_type_id: bordId, quantity: selection.bord })
+      const items = ticketTypes
+        .filter((t) => (selection[t.id] ?? 0) > 0)
+        .map((t) => ({ ticket_type_id: t.id, quantity: selection[t.id] }))
       const res = await fetch(`${API_BASE}/checkout/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -186,9 +163,9 @@ export default function TicketPage() {
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-semibold tracking-tight text-foreground">
-                Innocents Norge
+                {EVENT.organizer}
               </span>
-              <span className="text-xs text-muted-foreground">En kveld for Gaza</span>
+              <span className="text-xs text-muted-foreground">{EVENT.tagline}</span>
             </div>
           </div>
           <span className="flex items-center gap-1.5 rounded-full bg-muted/80 px-2.5 py-1.5 text-xs text-muted-foreground">
@@ -202,9 +179,29 @@ export default function TicketPage() {
         {/* Hero – tydelig hendelse og verdi */}
         <div className="mb-8 text-center">
           <h1 className="font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
-            En kveld for Gaza
+            {EVENT.title}
           </h1>
-          <p className="mt-2 text-base text-muted-foreground md:text-lg">
+
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-sm text-foreground/80">
+            <span className="flex items-center gap-1.5">
+              <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+              {EVENT.date}
+            </span>
+            {EVENT.time && (
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                {EVENT.time}
+              </span>
+            )}
+            {EVENT.venue && (
+              <span className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                {EVENT.venue}
+              </span>
+            )}
+          </div>
+
+          <p className="mt-3 text-base text-muted-foreground md:text-lg">
             Velg billetter under. Du betaler sikkert med Vipps eller kort og får billettene på e-post.
           </p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
@@ -216,21 +213,35 @@ export default function TicketPage() {
 
         {/* Skjema i kort for fokus */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          {discountPercent > 0 && (
-            <div className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-center">
-              <p className="text-sm font-semibold text-primary">
-                🎉 {discountPercent} % rabatt på alle billetter – tidsbegrenset tilbud
-              </p>
-            </div>
+          {campaign?.campaign_ends_at && (
+            <PriceCountdown
+              endsAt={campaign.campaign_ends_at}
+              label={campaign.campaign_label ?? "Kampanjepris"}
+              ordinaryPrice={campaign.price_nok}
+              onExpired={handleCampaignExpired}
+            />
           )}
+          <section className="rounded-2xl border border-border bg-card p-5 shadow-sm md:p-6">
+            <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Om Sami Hamdi
+            </h2>
+            <div className="flex flex-col gap-3">
+              {EVENT.about.map((avsnitt, i) => (
+                <p key={i} className="text-sm leading-relaxed text-foreground/90">
+                  {avsnitt}
+                </p>
+              ))}
+            </div>
+          </section>
+
           <section className="rounded-2xl border border-border bg-card p-5 shadow-sm md:p-6">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Velg antall billetter
             </h2>
             <TicketSelector
+              ticketTypes={ticketTypes}
               selection={selection}
               onChange={setSelection}
-              pricesByLabel={pricesByLabel}
             />
 
             {totalTickets > 0 && (
@@ -344,7 +355,9 @@ export default function TicketPage() {
 
       <footer className="mt-12 border-t border-border/60 bg-card/40 py-6">
         <div className="mx-auto flex max-w-2xl flex-col items-center gap-2 px-4 text-center">
-          <p className="text-xs text-muted-foreground">&copy; 2026 Innocents Norge · En kveld for Gaza</p>
+          <p className="text-xs text-muted-foreground">
+            &copy; 2026 {EVENT.organizer} · {EVENT.title}
+          </p>
           <p className="text-xs text-muted-foreground">
             Nettsiden er hostet og utviklet av{" "}
             <a

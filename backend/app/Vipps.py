@@ -5,6 +5,7 @@ Docs: https://developer.vippsmobilepay.com/docs/APIs/checkout-api/
 import logging
 import httpx
 from app.config import settings
+from app.event import EVENT_ORGANIZER, EVENT_TITLE
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ async def create_checkout_session(
                 "value": amount_nok * 100,  # øre
                 "currency": "NOK",
             },
-            "paymentDescription": "En kveld for Gaza – Innocents",
+            "paymentDescription": f"{EVENT_TITLE} – {EVENT_ORGANIZER}",
             "orderLines": order_lines,
         },
         "configuration": {

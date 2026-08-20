@@ -13,6 +13,7 @@ import qrcode
 from sqlalchemy.orm import Session
 from app.models import Order, Ticket, TicketType, OrderItem, TicketStatus
 from app.config import settings
+from app.event import EVENT_DATE, EVENT_ORGANIZER, EVENT_TITLE
 
 log = logging.getLogger(__name__)
 
@@ -72,13 +73,15 @@ def generate_qr_png_bytes(token: str) -> bytes:
 
 def issue_tickets(order: Order, db: Session) -> list[Ticket]:
     """
-    Utsteder Ticket-rader for en betalt ordre.
-    Kalles kun én gang (idempotent: sjekker om tickets allerede eksisterer).
+    Utsteder Ticket-rader for en betalt ordre og teller opp sold_count på billettypen.
+    Kalles kun én gang (idempotent: sjekker om tickets allerede eksisterer), så
+    sold_count blir ikke talt dobbelt selv om funksjonen kalles flere ganger.
     """
     if order.tickets:
         return order.tickets  # allerede utstedt
 
     tickets = []
+    solgt_per_type: dict[str, int] = {}
     for item in order.items:
         for _ in range(item.quantity):
             ticket = Ticket(
@@ -87,6 +90,17 @@ def issue_tickets(order: Order, db: Session) -> list[Ticket]:
             )
             db.add(ticket)
             tickets.append(ticket)
+        solgt_per_type[item.ticket_type_id] = (
+            solgt_per_type.get(item.ticket_type_id, 0) + item.quantity
+        )
+
+    # Uten dette står sold_count evig på 0, og kapasitetsgrensen i
+    # /checkout/create slår aldri inn – da kan det selges flere billetter enn
+    # det er plasser i lokalet.
+    for ticket_type_id, antall in solgt_per_type.items():
+        tt = db.query(TicketType).filter(TicketType.id == ticket_type_id).first()
+        if tt:
+            tt.sold_count = (tt.sold_count or 0) + antall
 
     order.total_tickets = len(tickets)
     db.commit()
@@ -94,6 +108,66 @@ def issue_tickets(order: Order, db: Session) -> list[Ticket]:
         db.refresh(t)
 
     return tickets
+
+
+def build_ticket_email(
+    buyer_name: str,
+    order_id: str,
+    order_summary: str,
+    tickets: list[tuple[str, str]],
+) -> tuple[str, str, list[tuple[str, bytes]]]:
+    """
+    Bygger billett-eposten: (emne, html, cid_images).
+
+    tickets: liste med (billettype-navn, qr_token).
+
+    Både den ekte utsendingen og forhåndsvisningen i
+    scripts/send_sample_ticket_email.py bruker denne, slik at det du ser i
+    forhåndsvisningen er det kunden faktisk får.
+    """
+    cid_images: list[tuple[str, bytes]] = []
+    ticket_blocks = ""
+    for i, (name, token) in enumerate(tickets, 1):
+        cid = f"qr{i}"
+        cid_images.append((cid, generate_qr_png_bytes(token)))
+        ticket_blocks += f"""
+        <div style="margin: 24px 0; padding: 24px; border: 1px solid #e5e5e5; border-radius: 8px; text-align: center;">
+            <p style="font-size: 14px; color: #666; margin: 0 0 8px 0;">Billett {i} av {len(tickets)}</p>
+            <p style="font-size: 18px; font-weight: bold; margin: 0 0 4px 0;">{EVENT_TITLE}</p>
+            <p style="font-size: 14px; color: #666; margin: 0 0 16px 0;">{EVENT_DATE} · {name}</p>
+            <img src="cid:{cid}" alt="QR-kode" style="width: 200px; height: 200px;" />
+            <p style="font-size: 12px; color: #999; margin: 12px 0 0 0;">Token: {token}</p>
+        </div>
+        """
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 16px;">
+        <h1 style="font-size: 24px; margin-bottom: 8px;">🎟️ Dine billetter</h1>
+        <p style="color: #555;">{EVENT_TITLE} – {EVENT_ORGANIZER}</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+
+        <p>Hei {buyer_name},</p>
+        <p>Tusen takk for bestillingen! Her er billettene dine.</p>
+        <p style="margin: 16px 0; padding: 12px 16px; background: #f5f5f5; border-radius: 8px; font-size: 14px;">
+            <strong>Arrangement:</strong> {EVENT_TITLE}<br />
+            <strong>Når:</strong> {EVENT_DATE}<br />
+            <strong>Du bestilte:</strong> {order_summary}
+        </p>
+
+        {ticket_blocks}
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+        <p style="font-size: 12px; color: #999;">
+            Vis QR-koden i døra. Billetten er personlig og kan ikke videreselges.
+            Ordrenummer: {order_id}
+        </p>
+    </body>
+    </html>
+    """
+    return f"🎟️ Dine billetter – {EVENT_TITLE}", html, cid_images
 
 
 def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
@@ -108,7 +182,7 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
         log.warning("INGEN E-POST SENDT: Ordre %s mangler buyer_email i databasen", order.id)
         return
     log.info("Sender billett-epost til %s for ordre %s (SMTP)", order.buyer_email, order.id)
-    # Oppsummering: f.eks. "2× Voksne (+12 år), 1× Barn (4-12 år)"
+    # Oppsummering: f.eks. "2× Billett"
     order_lines = []
     for item in order.items:
         tt = db.query(TicketType).filter(TicketType.id == item.ticket_type_id).first()
@@ -116,48 +190,17 @@ def send_ticket_email(order: Order, tickets: list[Ticket], db: Session):
         order_lines.append(f"{item.quantity}× {name}")
     order_summary = ", ".join(order_lines) if order_lines else f"{len(tickets)} billett(er)"
 
-    cid_images: list[tuple[str, bytes]] = []
-    ticket_blocks = ""
-    for i, ticket in enumerate(tickets, 1):
+    ticket_rows = []
+    for ticket in tickets:
         tt = db.query(TicketType).filter(TicketType.id == ticket.ticket_type_id).first()
-        name = tt.name if tt else "Billett"
-        cid = f"qr{i}"
-        cid_images.append((cid, generate_qr_png_bytes(ticket.qr_token)))
-        ticket_blocks += f"""
-        <div style="margin: 24px 0; padding: 24px; border: 1px solid #e5e5e5; border-radius: 8px; text-align: center;">
-            <p style="font-size: 14px; color: #666; margin: 0 0 8px 0;">Billett {i} av {len(tickets)}</p>
-            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">{name}</p>
-            <img src="cid:{cid}" alt="QR-kode" style="width: 200px; height: 200px;" />
-            <p style="font-size: 12px; color: #999; margin: 12px 0 0 0;">Token: {ticket.qr_token}</p>
-        </div>
-        """
+        ticket_rows.append((tt.name if tt else "Billett", ticket.qr_token))
 
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head><meta charset="utf-8"></head>
-    <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 16px;">
-        <h1 style="font-size: 24px; margin-bottom: 8px;">🎟️ Dine billetter</h1>
-        <p style="color: #555;">En kveld for Gaza – Innocents</p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-
-        <p>Hei {order.buyer_name},</p>
-        <p>Tusen takk for at du støtter Gaza-kvelden! Her er dine billetter.</p>
-        <p style="margin: 16px 0; padding: 12px 16px; background: #f5f5f5; border-radius: 8px; font-size: 14px;">
-            <strong>Du bestilte:</strong> {order_summary}
-        </p>
-
-        {ticket_blocks}
-
-        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-        <p style="font-size: 12px; color: #999;">
-            Vis QR-koden i døra. Billetten er personlig og kan ikke videreselges.
-            Ordrenummer: {order.id}
-        </p>
-    </body>
-    </html>
-    """
-    subject = "🎟️ Dine billetter – En kveld for Gaza"
+    subject, html, cid_images = build_ticket_email(
+        buyer_name=order.buyer_name,
+        order_id=order.id,
+        order_summary=order_summary,
+        tickets=ticket_rows,
+    )
     try:
         _email_via_smtp(order.buyer_email, subject, html, cid_images=cid_images)
         log.info("Billett-epost sendt til %s for ordre %s", order.buyer_email, order.id)
@@ -191,7 +234,7 @@ def _send_admin_new_order_notification(order: Order, ticket_count: int = 0) -> N
     </body>
     </html>
     """
-    subject = "Ny bestilling – En kveld for Gaza"
+    subject = f"Ny bestilling – {EVENT_TITLE}"
     for to in recipients:
         try:
             _email_via_smtp(to, subject, html)
@@ -214,7 +257,7 @@ def send_confirmation_email(order: Order, db: Session):
     <head><meta charset="utf-8"></head>
     <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 16px;">
         <h1 style="font-size: 24px; margin-bottom: 8px;">✅ Ordre bekreftet</h1>
-        <p style="color: #555;">En kveld for Gaza – Innocents</p>
+        <p style="color: #555;">{EVENT_TITLE} – {EVENT_ORGANIZER}</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
         <p>Hei {order.buyer_name},</p>
         <p><strong>Din ordre er betalt og registrert.</strong></p>
@@ -224,11 +267,11 @@ def send_confirmation_email(order: Order, db: Session):
         </p>
         <p style="font-size: 14px; color: #666;">Du har allerede mottatt billettene med QR-kode på e-post. Vis QR-koden i døra.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-        <p style="font-size: 12px; color: #999;">Takk for at du støtter Gaza-kvelden.</p>
+        <p style="font-size: 12px; color: #999;">Takk for at du støtter {EVENT_ORGANIZER}.</p>
     </body>
     </html>
     """
-    subject = "✅ Ordre betalt og registrert – En kveld for Gaza"
+    subject = f"✅ Ordre betalt og registrert – {EVENT_TITLE}"
     try:
         _email_via_smtp(order.buyer_email, subject, html)
         log.info("Bekreftelsesmail sendt til %s for ordre %s", order.buyer_email, order.id)

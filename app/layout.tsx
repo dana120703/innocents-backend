@@ -16,9 +16,9 @@ const dmSerif = DM_Serif_Display({
 })
 
 export const metadata: Metadata = {
-  title: 'Innocents Norge - Kjop Billetter',
+  title: 'En kveld med Sami Hamdi – Innocents Norge',
   description:
-    'Sikre deg billetter til Innocents Norge. Velg mellom voksen, barn og pensjonist-billetter.',
+    'Kjøp billett til En kveld med Sami Hamdi, søndag 29. november 2026. Betal med Vipps eller kort og få billetten på e-post.',
   icons: {
     icon: [
       {

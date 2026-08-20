@@ -50,8 +50,12 @@ class Settings(BaseSettings):
     # E-post som får varsel ved hver ny betalt bestilling (kommaseparert for flere)
     ADMIN_NOTIFICATION_EMAIL: str = "post@pixlmedia.no,post@innocents.no"
 
-    # Rabatt: 50 = 50 % av (tidsbegrenset tilbud). 0 = ingen rabatt.
-    DISCOUNT_PERCENT: int = 50
+    # Kampanjepris: gjelder frem til dette tidspunktet, deretter ordinær pris automatisk.
+    # Norsk tid hvis tidssone utelates. Tom streng = ingen kampanje (kun ordinær pris).
+    # Selve kampanjeprisen settes per billettype i update_ticket_types.py.
+    CAMPAIGN_ENDS_AT: str = "2026-09-01T00:00:00+02:00"
+    # Navnet som vises på kampanjen i frontend.
+    CAMPAIGN_LABEL: str = "Lanseringspris"
 
     # App (sett FRONTEND_RETURN_URL i Railway til din billettside-URL)
     BASE_URL: str

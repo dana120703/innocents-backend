@@ -1,4 +1,4 @@
-# Innocents Tickets API – En kveld for Gaza
+# Innocents Tickets API – En kveld med Sami Hamdi
 
 FastAPI backend med Vipps Checkout (produksjon), Postgres, QR-billetter og SMTP e-post.
 
@@ -16,7 +16,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r Requirements.txt
 
-# 3. Seed billettyper (krever at .env DATABASE_URL peker på Supabase)
+# 3. Legg inn billettyper (krever at .env DATABASE_URL peker på Supabase)
 python3 seed.py
 
 # 4. Start backend
@@ -84,12 +84,23 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-### 3. Seed billettyper
+### 3. Billettyper og priser
+
+Billettypene defineres i **`update_ticket_types.py`** – det er fasiten for navn,
+ordinær pris, kampanjepris og kapasitet.
 
 ```bash
-python seed.py
-# Kopier ID-ene som printes – disse brukes i frontend
+python3 update_ticket_types.py            # tørrkjøring: viser hva som ville blitt endret
+python3 update_ticket_types.py --apply    # lagrer
 ```
+
+`seed.py` bruker samme liste og er bare førstegangs-oppsett.
+
+Frontend henter alt fra `GET /ticket-types`, så priser og navn endres **kun** her –
+ingen kodeendring i Next.js. Se `docs/PRISER-OG-TEKSTER.md`.
+
+Kampanjeprisen gjelder frem til `CAMPAIGN_ENDS_AT` (miljøvariabel). Etter det
+tidspunktet slår ordinær pris inn automatisk, uten deploy.
 
 ### 4. Deploy til Render
 
@@ -107,7 +118,7 @@ const res = await fetch("https://api.innocents.no/checkout/create", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    items: [{ ticket_type_id: "uuid-fra-seed", quantity: 2 }],
+    items: [{ ticket_type_id: "uuid-fra-/ticket-types", quantity: 2 }],
     buyer: { name: "Ola Nordmann", email: "ola@example.com", phone: "+4712345678" },
   }),
 });
@@ -126,3 +137,4 @@ Sett samme verdi i Vipps Merchant Portal under callback-innstillinger.
 - **Betaling = webhook**, ikke redirect. Stol aldri på return URL alene.
 - **QR-token** er en UUID – genereres ved ticket-utstedelse, ikke ved ordre
 - **sold_count** oppdateres IKKE ved reservasjon, men ved `issue_tickets()` (PAID). For høy-kapasitet events bør du legge til soft-reservation.
+- **Priser regnes ut på serveren** (`app/pricing.py`), både for visning og betaling. Frontend sender kun `ticket_type_id` og antall – aldri pris.

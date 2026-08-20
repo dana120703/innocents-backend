@@ -14,3 +14,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+# Lokale testfiler
+backend/test_local.db
+tsconfig.tsbuildinfo
+backend/local.db

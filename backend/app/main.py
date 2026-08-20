@@ -16,7 +16,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Innocents Tickets API",
-    description="Billetsalg – En kveld for Gaza",
+    description="Billettsalg – En kveld med Sami Hamdi",
     version="1.0.0",
 )
 
@@ -30,6 +30,16 @@ app.add_middleware(
 
 app.include_router(main_router)
 app.include_router(webhook_router)
+
+
+@app.get("/")
+def root():
+    """Rot-URL: vis at API-et kjører. Bruk /health for sjekk."""
+    return {
+        "message": "Innocents Tickets API",
+        "health": "/health",
+        "docs": "/docs",
+    }
 
 
 @app.get("/health")

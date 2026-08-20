@@ -39,7 +39,9 @@ class TicketType(Base):
 
     id = Column(String, primary_key=True, default=new_uuid)
     name = Column(String, nullable=False)          # "Standard" / "VIP"
-    price_nok = Column(Integer, nullable=False)    # i kroner (heltall)
+    price_nok = Column(Integer, nullable=False)    # ordinær pris i kroner (heltall)
+    # Kampanjepris i kroner. Gjelder frem til CAMPAIGN_ENDS_AT – se app/pricing.py.
+    campaign_price_nok = Column(Integer, nullable=True)
     capacity = Column(Integer, nullable=False)
     sold_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)

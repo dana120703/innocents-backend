@@ -3,8 +3,9 @@
 import { useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import Image from "next/image"
-import { CheckCircle2, ArrowLeft, Mail, XCircle, Loader2 } from "lucide-react"
+import { CheckCircle2, ArrowLeft, CalendarDays, Mail, XCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { EVENT } from "@/lib/event"
 import Link from "next/link"
 
 function PageHeader() {
@@ -26,9 +27,9 @@ function PageHeader() {
         </div>
         <div className="flex flex-col">
           <span className="text-base font-semibold tracking-tight text-foreground">
-            Innocents Norge
+            {EVENT.organizer}
           </span>
-          <span className="text-sm text-foreground/80">En kveld for Gaza</span>
+          <span className="text-sm text-foreground/80">{EVENT.tagline}</span>
         </div>
       </div>
     </header>
@@ -239,6 +240,12 @@ export function TakkContent() {
             <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
               Din bestilling er bekreftet. Du vil motta billettene per e-post.
             </p>
+            <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+              {EVENT.title} · {EVENT.date}
+              {EVENT.time ? ` · ${EVENT.time}` : ""}
+              {EVENT.venue ? ` · ${EVENT.venue}` : ""}
+            </p>
           </div>
 
           {order && (
@@ -309,7 +316,9 @@ export function TakkContent() {
 
         <footer className="mt-auto border-t border-border bg-card/30">
           <div className="mx-auto flex max-w-2xl flex-col items-center gap-2 px-4 py-6 text-center">
-            <p className="text-sm text-foreground/90">&copy; 2026 Innocents Norge · En kveld for Gaza</p>
+            <p className="text-sm text-foreground/90">
+              &copy; 2026 {EVENT.organizer} · {EVENT.title}
+            </p>
             <p className="text-sm text-foreground/80">
               Nettsiden er hostet og utviklet av{" "}
               <a
